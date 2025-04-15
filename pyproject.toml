@@ -1,0 +1,36 @@
+[project]
+name = "ciphershare"
+version = "0.1.0"
+description = "A Secure Distributed File Sharing Platform"
+authors = [
+    { name = "Farah Tharwat" },
+    { name = "Salma ElSoly" },
+    { name = "Mustafa AbdelRahman" },
+    { name = "Ahmed Nabieh" },
+]
+readme = ""
+requires-python = ">=3.10"
+dependencies = [
+    "cryptography>=39.0.0",  # Cryptography library for secure encryption/decryption
+    "pycryptodome>=3.10.1",  # Alternative cryptography library
+    "argon2-cffi>=21.3.0",   # Password hashing using Argon2
+    "py2p>=0.1.0",           # Peer-to-peer file sharing library (optional)
+    "asyncio>=3.4",          # Asynchronous I/O support for real-time functions
+    "pydantic>=1.10.2",      # Data validation and settings management
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+black = "^22.3.0"          # Code formatter
+flake8 = "^5.0"            # Linter for code style
+mypy = "^0.971"            # Static type checker
+tox = "^3.25"              # For running tests in multiple environments
+pytest = "^7.0"            # Testing framework
+pytest-cov = "^3.0"        # Code coverage for testing
+pytest-asyncio = "^0.18.3" # For testing asynchronous code
