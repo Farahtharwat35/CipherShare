@@ -1,6 +1,5 @@
 *.pyc
 __pycache__/
 .venv/
-poetry.lock
 .idea/
 .vscode/
