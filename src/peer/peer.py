@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Tuple
 
-from src.file_service import FileInfo, FileService
+from src.peer.file_service import FileInfo, FileService
 import logging
 
 
@@ -21,34 +21,38 @@ HEARTBEAT_INTERVAL = 3
 
 
 class Peer:
-    def __init__(self, server_address, id):
-        self.server_address = server_address
-        self.id=id
+    def __init__(self, username, server_ip,server_port):
+        self.server_address = (server_ip, server_port)
+        self.username=username
         self.file_service = FileService(self)
         self.running = False
-        self.peers = []
+        self.avilable_peers = {} #username-> (ip, port)
+        self.active_connections = {} #username-> socket
+        self.connection_lock = threading.Lock()
         self.tcp_port = TCP_PORT
         self.udp_port = UDP_PORT
+        
+        self.rendezvous_server_socket = None
 
     def start(self):
         self.running = True
-        #self.register_with_server()
-        #self.start_heartbeat_thread()
-        #self.peers = self.request_peer_list()
-        self.file_service.start()
+        self.initialize_peer_server_socket()
         threading.Thread(target=self.listen_for_other_peers, daemon=True).start()
+        self.register_with_server()
+        self.start_heartbeat_thread()
+        self.request_peer_list()
+        self.file_service.start()
 
     def register_with_server(self):
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((self.server_address, TCP_PORT))
-            s.sendall(f"register {self.id}\n".encode())
-            response = s.recv(1024).decode()
-            if response == "registered\n":
+            self.rendezvous_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.rendezvous_server_socket.connect(self.server_address)
+            self.rendezvous_server_socket.sendall(f"HELLO#{self.username}#{socket.gethostbyname(socket.gethostname())}#{self.tcp_port}\n".encode())
+            response = self.rendezvous_server_socket.recv(1024).decode()
+            if response.startswith("WELCOME"):
                 print("Registered with server")
             else:
                 print("Failed to register with server")
-            s.close()
         except Exception as e:
             print(f"Error registering with server: {e}")
 
@@ -57,7 +61,7 @@ class Peer:
             udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             while self.running:
                 try:
-                    udp_sock.sendto(f"heartbeat {self.id}\n".encode(), (self.server_address, UDP_PORT))
+                    udp_sock.sendto(f"heartbeat {self.username}\n".encode(), (self.server_address, UDP_PORT))
                 except Exception as e:
                     print(f"Error sending heartbeat: {e}")
                 time.sleep(HEARTBEAT_INTERVAL)
@@ -66,19 +70,24 @@ class Peer:
 
     def request_peer_list(self):
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((self.server_address, TCP_PORT))
-            s.sendall("list-peers\n".encode())
-            response = s.recv(4096).decode()
+            if self.rendezvous_server_socket is None:
+                print("Not connected to rendezvous server")
+                return []
+            self.rendezvous_server_socket.sendall("LIST".encode())
+            response = self.rendezvous_server_socket.recv(4096).decode()
             if not response:
                 return []
             peer_list = response.strip().split('\n')
-            peers = []
+
             for peer in peer_list:
-                ip, port = peer.split(':')
-                peers.append((ip, int(port)))
-            self.peers = peers
-            return peers
+                username, address = peer.split('#')
+                ip, port = address.split(':')
+                port = int(port)
+                if username != self.username:
+                    self.avilable_peers[username] = (ip, port)
+
+            return self.avilable_peers
+
         except Exception as e:
             print(f"Error requesting peer list: {e}")
             return []
@@ -108,19 +117,18 @@ class Peer:
         self.file_service.download_file(file_id, client_socket)
         client_socket.close()
 
+    def initialize_peer_server_socket(self):
+        self.peer_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.peer_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.peer_server_socket.bind(('', self.tcp_port))
+        self.peer_server_socket.listen(5)
+        print(f"Listening for other peers on port {self.tcp_port}")
+        self.peer_server_socket.settimeout(4)
 
     def listen_for_other_peers(self):
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.bind(('', self.tcp_port))
-        server_socket.listen(5)
-        print(f"Listening for other peers on port {self.tcp_port}")
-
-        server_socket.settimeout(4)
-        
         while self.running:
             try:
-                client_socket, address = server_socket.accept()
+                client_socket, address = self.peer_server_socket.accept()
                 thread = threading.Thread(target=self._handle_peer_connection, args=(client_socket, address), daemon=True)
                 thread.start()
             except socket.timeout:
@@ -129,9 +137,17 @@ class Peer:
                 print(f"Error accepting connection: {e}")
                 time.sleep(1)  
 
-    
     def _handle_peer_connection(self, client_socket: socket.socket, address: Tuple[str, int]):
         try:
+            data = client_socket.recv(1024)
+            if not data:
+                logging.info(f"Connection closed by {address}")
+                return
+            peer_username = data.decode().strip()
+            logging.info(f"Peer {peer_username} connected from {address}")
+            with self.connection_lock:
+                self.active_connections[peer_username] = client_socket
+
             while True:
                 data = client_socket.recv(1024)
                 if not data:
@@ -152,8 +168,6 @@ class Peer:
         except Exception as e:
             print(f"Error handling peer connection: {e}")
             logging.error(f"Error handling peer connection: {e}")
-        
-
 
     def send_search_request_with_file_name(self, name)->list[FileInfo]:
         try:

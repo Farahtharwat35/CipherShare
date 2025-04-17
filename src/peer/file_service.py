@@ -25,7 +25,7 @@ class FileInfo:
 class FileService:
     def __init__(self, peer):
         self.peer = peer
-        self.shared_files : dict[Tuple[str,int], List[str]] = {}   #peer -> file_id
+        self.shared_files : dict[str, List[str]] = {}   #peer_username -> file_id
         self.shared_files_info : dict[str, FileInfo] = {}    #file_id -> FileInfo
         self.received_files : dict[str, FileInfo] = {}
 
@@ -33,7 +33,7 @@ class FileService:
         os.makedirs(SHARED_DIR, exist_ok=True)
         os.makedirs(RECEIVED_DIR, exist_ok=True)
 
-    def share_file(self, file_path: str, keywords: Optional[List[str]] = None, description: Optional[str]=None, peer_list: Optional[List[Tuple[str, int]]] = None, is_public: bool = True)-> FileInfo:
+    def share_file(self, file_path: str, keywords: Optional[List[str]] = None, description: Optional[str]=None, peer_list: Optional[List[str]] = None, is_public: bool = True)-> FileInfo:
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
         file_id = str(uuid.uuid4())
@@ -57,18 +57,33 @@ class FileService:
         peers_to_share = peer_list if peer_list is not None else self.peer.peers
     
         for peer in peers_to_share:
-            if isinstance(peer, str):  
-                peer = (peer, 0)  
             self.shared_files.setdefault(peer, []).append(file_id)
         self.shared_files_info[file_id] = file_info
         return file_info
     
+    def unshare_file(self, file_id: str, peers: List[str] = None):
+        if file_id not in self.shared_files_info:
+            raise ValueError(f"File ID {file_id} not found in shared files.")
+        
+        peers_to_unshare = peers if peers is not None else self.peer.peers_usernames
+        for peer in peers_to_unshare:
+            if peer in self.shared_files and file_id in self.shared_files[peer]:
+                self.shared_files[peer].remove(file_id)
+                if not self.shared_files[peer]:
+                    del self.shared_files[peer]
+                
+        del self.shared_files_info[file_id]
+        os.remove(os.path.join(SHARED_DIR, file_id))
+        print(f"File {file_id} unshared and removed from shared files.")
+    
+    def get_shared_files(self) -> List[FileInfo]:
+        return list(self.shared_files_info.values())
    
-    def get_shared_files_by_peer(self, peer: Tuple[str, int]) -> List[FileInfo]:
+    def get_shared_files_by_peer(self, peer: str) -> List[FileInfo]:
         peer_file_ids = self.shared_files.get(peer, [])
         return [self.shared_files_info[file_id] for file_id in peer_file_ids]
     
-    def get_shared_files_by_peer_and_keywords(self, peer: Tuple[str, int], keywords: List[str]) -> List[FileInfo]:
+    def get_shared_files_by_peer_and_keywords(self, peer: str, keywords: List[str]) -> List[FileInfo]:
         peer_file_ids = self.shared_files.get(peer, [])
         return [
             self.shared_files_info[file_id]
@@ -77,7 +92,7 @@ class FileService:
                all(keyword in (self.shared_files_info[file_id].keywords or []) for keyword in keywords)
         ]
     
-    def get_shared_files_by_peer_and_file_name(self, peer: Tuple[str, int], file_name: str) -> List[FileInfo]:
+    def get_shared_files_by_peer_and_file_name(self, peer: str, file_name: str) -> List[FileInfo]:
         all_files = []
         for peer, file_ids in self.shared_files.items():
             for file_id in file_ids:

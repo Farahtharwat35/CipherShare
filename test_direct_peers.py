@@ -2,8 +2,8 @@ import os
 import sys
 import threading
 import time
-from src.peer import Peer
-from src.file_service import SHARED_DIR
+from src.peer.peer import Peer
+from src.peer.file_service import SHARED_DIR
 
 def setup_test_files(peer_id):
     """Create some test files in the peer's shared directory"""
