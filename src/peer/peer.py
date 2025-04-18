@@ -54,7 +54,7 @@ class Peer:
         try:
             self.rendezvous_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.rendezvous_server_socket.connect(self.server_address)
-            self.rendezvous_server_socket.sendall(f"#JOIN {self.username} {socket.gethostbyname(socket.gethostname())} {self.tcp_port}#".encode())
+            self.rendezvous_server_socket.sendall(f"#JOIN {self.username} {self._get_local_ip_address()} {self.tcp_port}#".encode())
             response = self.rendezvous_server_socket.recv(1024).decode()
             if response.startswith("join-success"):
                 print("Registered with server\n")
@@ -301,3 +301,13 @@ class Peer:
         self.active_outgoing_connections.clear()
         self.active_incoming_connections.clear()
         print("Peer stopped")
+    
+    def _get_local_ip_address(self):
+        """Get the local IP address of the machine"""
+        HOST = socket.gethostname()
+        try:
+            HOST = socket.gethostbyname(HOST)
+        except socket.gaierror:
+            import netifaces as ni
+            HOST = ni.ifaddresses('en0')[ni.AF_INET][0]['addr']
+        return HOST
