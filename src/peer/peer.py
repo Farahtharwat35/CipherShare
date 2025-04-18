@@ -26,9 +26,9 @@ class Peer:
         self.username=username
         self.file_service = FileService(self)
         self.running = False
-        self.avilable_peers = {} #username-> (ip, port)
-        self.active_incoming_connections = {} #username-> socket
-        self.active_outgoing_connections = {} #username-> (ip, port)
+        self.available_peers = {} #username-> (ip, port)
+        self.active_incoming_connections:dict[str, socket.socket] = {} #username-> socket
+        self.active_outgoing_connections: dict[str, socket.socket] = {} #username-> (socket)
         self.connection_lock = threading.Lock()
         self.tcp_port = self_tcp_port
         self.udp_port = self_udp_port
@@ -44,17 +44,17 @@ class Peer:
         self.request_peer_list()
         self.file_service.start()
         
-        answer = input("Do you want to connect to a peer? (yes/no): ").strip().lower()
-        if answer == "yes":
-            peer_to_connect_to = input("Enter the username of the peer you want to connect to: ")
-            ip_to_connect = input("Enter the IP address of the peer you want to connect to: ")
-            port_to_connect = int(input("Enter the port of the peer you want to connect to: "))
+        # answer = input("Do you want to connect to a peer? (yes/no): ").strip().lower()
+        # if answer == "yes":
+        #     peer_to_connect_to = input("Enter the username of the peer you want to connect to: ")
+        #     ip_to_connect = input("Enter the IP address of the peer you want to connect to: ")
+        #     port_to_connect = int(input("Enter the port of the peer you want to connect to: "))
             
-            self.connect_to_peer(peer_to_connect_to, ip_to_connect, port_to_connect)
-        else:
-            print("Not connecting to any peer.")
+        #     self._connect_to_peer(peer_to_connect_to, ip_to_connect, port_to_connect)
+        # else:
+        #     print("Not connecting to any peer.")
         
-        answer = input("Do you want to share a file? (yes/no): ").strip().lower()
+        # answer = input("Do you want to share a file? (yes/no): ").strip().lower()
 
         while self.running:
             time.sleep(2)
@@ -91,21 +91,21 @@ class Peer:
             if self.rendezvous_server_socket is None:
                 print("Not connected to rendezvous server")
                 return []
-            self.rendezvous_server_socket.sendall("#LIST#".encode())
+            self.rendezvous_server_socket.sendall("#LIST".encode())
             response = self.rendezvous_server_socket.recv(4096).decode()
             print(f"Received peer list: {response}")
             if not response:
                 return []
-            # peer_list = response.strip().split('\n')
+            peer_list = response.strip().split('\n')
 
-            # for peer in peer_list:
-            #     username, address = peer.split('#')
-            #     ip, port = address.split(':')
-            #     port = int(port)
-            #     if username != self.username:
-            #         self.avilable_peers[username] = (ip, port)
+            for peer in peer_list:
+                username, address = peer.split('#')
+                ip, port = address.split(':')
+                port = int(port)
+                if username != self.username:
+                    self.available_peers[username] = (ip, port)
 
-            # return self.avilable_peers
+            return self.available_peers
 
         except Exception as e:
             print(f"Error requesting peer list: {e}")
@@ -130,7 +130,7 @@ class Peer:
     def _handle_search_request_keyword(self, peer_username, client_socket, keyword):
         print("Not implemented yet")
 
-    def _handle_download_request(self, client_socket, file_id):
+    def _handle_download_request(self,peer_username, client_socket, file_id):
         self.file_service.upload_file(file_id, client_socket)
         client_socket.close()
 
@@ -146,7 +146,7 @@ class Peer:
         print(f"Listening for other peers on port {self.tcp_port}")
         self.peer_server_socket.settimeout(4)
 
-    def connect_to_peer(self, username, peer_ip, peer_port):
+    def _connect_to_peer(self, username, peer_ip, peer_port):
         try:
             peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             peer_socket.connect((peer_ip, peer_port))
@@ -159,6 +159,20 @@ class Peer:
             self.active_outgoing_connections[username] = peer_socket
             print(f"Connected to peer {username} at {peer_ip}:{peer_port}")
             return peer_socket
+        except Exception as e:
+            print(f"Error connecting to peer: {e}")
+            return None
+            
+    def connect_to_peers(self):
+        try:
+            for peer_username in self.available_peers:
+                peer_ip, peer_port = self.available_peers[peer_username]
+                socket= self._connect_to_peer(peer_username, peer_ip, peer_port)
+                if socket is None:
+                    print(f"Failed to connect to peer {peer_username}")
+                    continue
+                self.active_outgoing_connections[peer_username] = socket
+                print(f"Connected to peer {peer_username} at {peer_ip}:{peer_port}")
         except Exception as e:
             print(f"Error connecting to peer: {e}")
             return None
@@ -176,6 +190,7 @@ class Peer:
                 time.sleep(1)  
 
     def _handle_peer_connection(self, client_socket: socket.socket, address: Tuple[str, int]):
+        peer_username = None
         try:
             data = client_socket.recv(1024)
             if not data:
@@ -222,34 +237,33 @@ class Peer:
                 del self.active_incoming_connections[peer_username]
             logging.error(f"Error handling peer connection: {e}")
 
-    def send_search_request_with_file_name(self, name)->list[FileInfo]:
+    def send_search_request_with_file_name_or_keyword(self, name, is_keyword=False)->list[FileInfo]:
         try:
+            self.connect_to_peers()
             files_info=[]
-            for connection in self.active_incoming_connections.values():
-                connection.sendall(f"search {name}".encode())
+            for connection in self.active_outgoing_connections.values():
+                send_command = f"search by keyword {name}" if is_keyword else f"search {name}"
+                connection.sendall(send_command.encode())
                 data = connection.recv(1024).decode()
                 if data:
                     files_info_str = data.strip().split('\n')
                     for file_info_str in files_info_str:
                         file_info = self.file_service.parse_file_info(file_info_str)
                         files_info.append(file_info)
+                self._close_connection(connection)
             return files_info
         except Exception as e:
             print(f"Error sending search request: {e}")
         return []
 
-    def send_search_request_with_keyword(self, keyword)->list[FileInfo]:
+    def _close_connection(self,conn):
         try:
-            files_info=[]
-            for connection in self.active_incoming_connections.values():
-                connection.sendall(f"search by keyword {keyword}".encode())
-                data = connection.recv(1024).decode()
-                if data:
-                    files_info_str = data.strip().split('\n')
-                    for file_info_str in files_info_str:
-                        file_info = self.file_service.parse_file_info(file_info_str)
-                        files_info.append(file_info)
-            return files_info
+            conn.close()
+            with self.connection_lock:
+                for username, socket in self.active_outgoing_connections.items():
+                    if socket == conn:
+                        del self.active_outgoing_connections[username]
+                        break
+            logging.info(f"Connection closed")
         except Exception as e:
-            print(f"Error sending search request: {e}")
-        return []
+            logging.error(f"Error closing connection: {e}")
