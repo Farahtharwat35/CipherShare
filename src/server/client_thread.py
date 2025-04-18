@@ -19,10 +19,10 @@ class ClientThread(threading.Thread):
         self.udpServer = None
         self.message_queue = queue.Queue()
         self.handlers = {
-            types.Command.JOIN: self.handle_peer_join,
-            types.Command.LOGIN: self.handle_login,
-            types.Command.LOGOUT: self.handle_logout,
-            types.Command.LIST_ONLINE_PEERS: self.handle_online_peers_listing
+            str(types.Command.JOIN): self.handle_peer_join,
+            str(types.Command.LOGIN): self.handle_login,
+            str(types.Command.LOGOUT): self.handle_logout,
+            str(types.Command.LIST_ONLINE_PEERS): self.handle_online_peers_listing
         }
 
         print(f"New thread started for {ip}:{port}")
@@ -59,7 +59,7 @@ class ClientThread(threading.Thread):
         """Register a handler for a specific command"""
         self.handlers[command] = handler
 
-    def handle_peer_join(self, message):
+    def handle_peer_join(self, message: list):
         """Handle a user attempting to join"""
         if self.db.is_account_exist(message[1]):
             response = "join-exist"
@@ -69,7 +69,7 @@ class ClientThread(threading.Thread):
         logging.info(f"Send to {self.ip}:{self.port} -> {response}")
         self.tcpClientSocket.send(response.encode())
 
-    def handle_login(self, message):
+    def handle_login(self, message: list):
         """Handle user login"""
         if not self.db.is_account_exist(message[1]):
             response = "login-account-not-exist"
@@ -89,16 +89,16 @@ class ClientThread(threading.Thread):
         logging.info(f"Send to {self.ip}:{self.port} -> {response}")
         self.tcpClientSocket.send(response.encode())
 
-    def handle_logout(self, message):
+    def handle_logout(self, message: list):
         """Handle user logout"""
         if len(message) > 1 and message[1] is not None and self.db.is_account_online(message[1]):
             self.db.user_logout(message[1])
             self.tcpClientSocket.close()
             self.udpServer.timer.cancel()
 
-    def handle_online_peers_listing(self):
+    def handle_online_peers_listing(self, message: list):
         """List all online peers"""
-        online_peers = self.db.get_online_peers()  
+        online_peers = self.db.get_online_peers()
         response = "Online peers: " + ', '.join(online_peers)
         logging.info(f"Send to {self.ip}:{self.port} -> {response}")
         self.tcpClientSocket.send(response.encode())
