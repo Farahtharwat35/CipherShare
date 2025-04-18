@@ -15,7 +15,6 @@ class ClientThread(threading.Thread):
         self.port = port
         self.tcpClientSocket = tcpClientSocket
         self.db = db
-        self.username = None
         self.isOnline = True
         self.udpServer = None
         self.message_queue = queue.Queue()
@@ -51,7 +50,7 @@ class ClientThread(threading.Thread):
                     if not raw_data:
                         print(f"Connection closed by peer {self.ip}:{self.port}")
                         break
-
+                        
                     print(f"Received raw data from {self.ip}:{self.port}: {raw_data}")
                     messages = re.findall(r'#(.*?)#', raw_data)
                     print(f"Extracted messages: {messages}")
@@ -79,7 +78,7 @@ class ClientThread(threading.Thread):
             # Cancel any timers
             if hasattr(self, 'udpServer') and self.udpServer:
                 self.udpServer.stop()
-
+                
             # Close socket safely if still open
             if hasattr(self, 'tcpClientSocket') and self.tcpClientSocket:
                 try:
@@ -87,11 +86,7 @@ class ClientThread(threading.Thread):
                 except:
                     pass  # Socket might already be closed
                 self.tcpClientSocket.close()
-                
-            # Remove from database if logged in
-            if self.username:
-                self.db.user_logout(self.username)
-                
+
         except Exception as e:
             print(f"Error during resource cleanup: {e}")
             logging.error(f"Resource cleanup error: {e}")
