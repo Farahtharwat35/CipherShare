@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Tuple
 
-from src.peer.file_service import FileInfo, FileService
+from file_service import FileInfo, FileService
 import logging
 
 
@@ -47,9 +47,9 @@ class Peer:
         try:
             self.rendezvous_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.rendezvous_server_socket.connect(self.server_address)
-            self.rendezvous_server_socket.sendall(f"HELLO#{self.username}#{socket.gethostbyname(socket.gethostname())}#{self.tcp_port}\n".encode())
+            self.rendezvous_server_socket.sendall(f"#JOIN {self.username} {socket.gethostbyname(socket.gethostname())} {self.tcp_port}#\n".encode())
             response = self.rendezvous_server_socket.recv(1024).decode()
-            if response.startswith("WELCOME"):
+            if response.startswith("join-success"):
                 print("Registered with server")
             else:
                 print("Failed to register with server")
@@ -61,7 +61,7 @@ class Peer:
             udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             while self.running:
                 try:
-                    udp_sock.sendto(f"heartbeat {self.username}\n".encode(), (self.server_address, UDP_PORT))
+                    udp_sock.sendto(f"heartbeat {self.username}\n".encode(), (self.server_address[0], UDP_PORT))
                 except Exception as e:
                     print(f"Error sending heartbeat: {e}")
                 time.sleep(HEARTBEAT_INTERVAL)
@@ -75,6 +75,7 @@ class Peer:
                 return []
             self.rendezvous_server_socket.sendall("LIST".encode())
             response = self.rendezvous_server_socket.recv(4096).decode()
+            print(f"Received peer list: {response}")
             if not response:
                 return []
             peer_list = response.strip().split('\n')

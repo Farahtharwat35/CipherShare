@@ -5,4 +5,4 @@ class Command(Enum):
     JOIN = "JOIN"
     LOGIN =  "LOGIN"
     LOGOUT =  "LOGOUT"
-    LIST_ONLINE_PEERS = "LIST ONLINE PEERS"
+    LIST = "LIST"

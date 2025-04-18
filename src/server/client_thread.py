@@ -3,8 +3,8 @@ import queue
 import logging
 import re
 import bcrypt
-from src.server.udp_handler import UDPServer
-from src.types import types
+from udp_handler import UDPServer
+from static import static
 
 
 class ClientThread(threading.Thread):
@@ -19,10 +19,10 @@ class ClientThread(threading.Thread):
         self.udpServer = None
         self.message_queue = queue.Queue()
         self.handlers = {
-            str(types.Command.JOIN): self.handle_peer_join,
-            str(types.Command.LOGIN): self.handle_login,
-            str(types.Command.LOGOUT): self.handle_logout,
-            str(types.Command.LIST_ONLINE_PEERS): self.handle_online_peers_listing
+            static.Command.JOIN.value: self.handle_peer_join,
+            static.Command.LOGIN.value: self.handle_login,
+            static.Command.LOGOUT.value: self.handle_logout,
+            static.Command.LIST.value: self.handle_online_peers_listing
         }
 
         print(f"New thread started for {ip}:{port}")
@@ -60,6 +60,9 @@ class ClientThread(threading.Thread):
         self.handlers[command] = handler
 
     def handle_peer_join(self, message: list):
+        if len(message) < 3:
+            logging.error("Invalid JOIN message format")
+            return
         """Handle a user attempting to join"""
         if self.db.is_account_exist(message[1]):
             response = "join-exist"
