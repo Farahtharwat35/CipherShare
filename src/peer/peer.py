@@ -120,6 +120,7 @@ class Peer:
                 metadata = self.file_service.format_file_info(file_info)
                 files_info.append(metadata)
             response = "\n".join(files_info)
+            response = f"found {response}"
             client_socket.sendall(response.encode())
         except Exception as e:
             print(f"Error handling search request: {e}")
@@ -206,7 +207,7 @@ class Peer:
                 client_socket.close()
                 return
 
-            print(f"Received HELLO from {address}: {initial_message}")
+            #print(f"Received HELLO from {address}: {initial_message}")
             client_socket.sendall("HELLO_ACK".encode())
             
             # Proceed with the connection
@@ -241,21 +242,27 @@ class Peer:
         try:
             self.connect_to_peers()
             files_info=[]
-            for connection in self.active_outgoing_connections.values():
+            connection_to_close = []
+            for username, connection in self.active_outgoing_connections.items():
                 send_command = f"search by keyword {name}" if is_keyword else f"search {name}"
                 connection.sendall(send_command.encode())
                 data = connection.recv(1024).decode()
-                if data.startswith('info|'):
+                if data[:5] == "found":
+                    data = data[6:]
                     files_info_str = data.strip().split('\n')
                     for file_info_str in files_info_str:
                         file_info = self.file_service.parse_file_info(file_info_str)
                         files_info.append(file_info)
                 else:
-                    print(f"Peer {connection} responded with: {data}")
-                self._close_connection(connection)
+                    print(f"Peer {username} responded with: {data}")
+                connection_to_close.append(connection)
+            
+            for conn in connection_to_close:
+                self._close_connection(conn)
             return files_info
         except Exception as e:
-            print(f"Error sending search request: {e}")
+            #print(f"Error sending search request: {e}")
+            logging.error(f"Error sending search request: {e}")
         return []
     
     def send_download_request(self,username, file_id):
@@ -265,16 +272,22 @@ class Peer:
                 return
             peer_ip, peer_port = self.available_peers[username]
             socket = self._connect_to_peer(username, peer_ip, peer_port)
-            if socket is None:
-                print(f"Failed to connect to peer {username}")
-                return
-            socket.sendall(f"download {file_id}".encode())
-            self.file_service.download_file(file_id, socket)
-            if file_id in self.file_service.received_files:
-                print(f"File {file_id} downloaded successfully from {username}")
-            else:
-                print(f"Failed to download file {file_id} from {username}")
-            self._close_connection(socket)
+            try:
+                if socket is None:
+                    print(f"Failed to connect to peer {username}")
+                    return
+                socket.sendall(f"download {file_id}".encode())
+                self.file_service.download_file(file_id, socket)
+
+                import os
+                file_path = os.path.join("received", file_id)
+                if os.path.exists(file_path):
+                    print(f"File {file_id} downloaded successfully from {username}")
+                else:
+                    print(f"Failed to download file {file_id} from {username}")
+                self._close_connection(socket)
+            except Exception as e:
+                print(f"Error during download request: {e}")
         except Exception as e:
             print(f"Error sending download request: {e}")
 

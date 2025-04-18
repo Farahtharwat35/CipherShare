@@ -96,10 +96,12 @@ class FileService:
     def get_shared_files_by_peer_and_file_name(self, peer: str, file_name: str) -> List[FileInfo]:
         all_files = []
         file_ids = self.shared_files.get(peer, [])
+        logging.info(f"Searching for files with name '{file_name}' for peer '{peer}'.")
+        logging.info(f"File IDs: {file_ids}")
         for file_id in file_ids:
-            file_info = self.shared_files_info.get(file_id)
-            if file_info and file_name.lower() in file_info.name.lower():
-                print(f"Found matching file: {file_info.name}")
+            file_info = self.shared_files_info[file_id]
+            if file_info.name.lower() == file_name.lower():
+                logging.info(f"Found matching file: {file_info.name}")
                 all_files.append(file_info)
         logging.info(f"Found {len(all_files)} files matching '{file_name}' for peer '{peer}'.")
         return all_files
@@ -132,46 +134,102 @@ class FileService:
     
     def download_file(self, file_id: str, socket: socket.socket):
         try:
+            socket.settimeout(60)
             upload_signal = socket.recv(1024).decode().strip()
             if upload_signal != "upload":
                 raise ValueError(f"Expected 'upload' signal, but received: {upload_signal}")
             
+            print(f"recieved upload signal from peer")
+
             metadata = socket.recv(1024).decode().strip()
             file_info = self.parse_file_info(metadata)
-            self.received_files[file_id] = file_info
+
+            socket.sendall(f"metadata_received\n".encode())
             start_signal = socket.recv(1024).decode().strip()
             if start_signal != "start":
                 raise ValueError(f"Expected 'start' signal, but received: {start_signal}")
             
+            print(f"recieved start signal from peer")
+            print(f"Starting file download...")
             file_path = os.path.join(RECEIVED_DIR, file_id)
+            bytes_received = 0
+
+            buffer = b""
+
             with open(file_path, 'wb') as f:
                 while True:
-                    data = socket.recv(4096)
-                    if not data:
+                    try:
+                        data = socket.recv(4096)
+                        if not data:
+                            break
+                        
+                    
+                        buffer += data
+                        if b"EOF\n" in buffer:
+                            
+                            eof_pos = buffer.find(b"EOF\n")
+                            f.write(buffer[:eof_pos])
+                            bytes_received += eof_pos
+                            print(f"Received EOF marker after {bytes_received} bytes")
+                            break
+                        else:
+                            
+                            to_write = buffer[:-5] if len(buffer) > 5 else b""
+                            buffer = buffer[-5:] if len(buffer) > 5 else buffer
+                            if to_write:
+                                f.write(to_write)
+                                bytes_received += len(to_write)
+                                print(f"Received {bytes_received} bytes")
+                     
+                        self.received_files[file_id] = file_info
+                    except Exception as e:
+                        print("Error during file download: ", e)
                         break
-                    f.write(data)
+                
+                print(f"File {file_id} downloaded successfully with {bytes_received} bytes")
         except Exception as e:
             print(f"Error downloading file: {e}")
         
 
 
     def upload_file(self, peer_username: str, file_id: str, socket: socket.socket):
-        # check wheathe rthis username is alowed to download or not
-        if peer_username not in self.shared_files or file_id not in self.shared_files[peer_username]:
-            logging.error(f"File {file_id} is not shared with {peer_username}.")
-            socket.sendall(f"not-allowed\n".encode())
-            return
-        logging.info(f"Uploading file {file_id} to {peer_username}.")
-        socket.sendall(f"upload\n".encode())
-        file_info = self.shared_files_info[file_id]
-        metadata = self.format_file_info(file_info)
-        socket.sendall(f"{metadata}\n".encode())
-        socket.sendall("start\n".encode())
-        file_path = os.path.join(SHARED_DIR, file_id)
-        with open(file_path, 'rb') as f:
-            while True:
-                data = f.read(4096)
-                if not data:
-                    break
-                socket.sendall(data)
+        try:
+            socket.settimeout(60)
+
+            if peer_username not in self.shared_files or file_id not in self.shared_files[peer_username]:
+                logging.error(f"File {file_id} is not shared with {peer_username}.")
+                socket.sendall(f"not-allowed\n".encode())
+                return
+            
+            logging.info(f"Uploading file {file_id} to {peer_username}.")
+            socket.sendall(f"upload\n".encode())
+
+
+            file_info = self.shared_files_info[file_id]
+            metadata = self.format_file_info(file_info)
+            socket.sendall(f"{metadata}\n".encode())
+
+            ack = socket.recv(1024).decode().strip()
+            if ack != "metadata_received":
+                raise ValueError(f"Expected 'metadata_received' signal, but received: {ack}")
+            
+            
+            socket.sendall("start\n".encode())
+            file_path = os.path.join(SHARED_DIR, file_id)
+
+            bytes_sent = 0
+            with open(file_path, 'rb') as f:
+                while True:
+                    data = f.read(4096)
+                    if not data:
+                        break
+                    socket.sendall(data)
+                    bytes_sent += len(data)
+                    logging.info(f"Sent {bytes_sent} bytes")
+            socket.sendall(b"EOF\n")
+            logging.info(f"File {file_id} uploaded successfully to {peer_username}.")
+        except Exception as e:
+            logging.error(f"Error uploading file: {e}")
+            
         
+            

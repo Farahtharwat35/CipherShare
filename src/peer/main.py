@@ -13,7 +13,9 @@ def show_help():
     print("  share <file-path> <peers-username> - Share specfic file with specfic peers")
     print("  search <filename> - Search for files by name")
     print("  keyword <keyword> - Search for files by keyword")
+    print("  download <username> <file-id> - Download a file from a peer")
     print("  list - Request updated peer list")
+    print("  list-shared - List all shared files")
     print("  help - Show this help message")
     print("  exit - Quit the program")
 
@@ -44,18 +46,24 @@ def main():
                 
             elif cmd == "share":
                 if len(parts) > 1:
-                    file_path, peers = parts[1].split(maxsplit=1)
-                    print(f"Sharing file: {file_path} with peers: {peers}")
-                    p.file_service.share_file(file_path, peer_list=peers.split(','))
+                    share_parts = parts[1].split(maxsplit=1)
+                    file_path = share_parts[0]
+                    peers = share_parts[1].split(',') if len(share_parts) > 1 else None
+                    if peers:
+                        print(f"Sharing file: {file_path} with peers: {', '.join(peers)}")
+                    else:
+                        print(f"Sharing file: {file_path} with all peers")
+                    
+                    p.file_service.share_file(file_path, peer_list=peers)
                 else:
-                    print("Invalid command. Usage: share <file-path> <peers-username>")
+                    print("Invalid command. Usage: share <file-path> [peers-username,...]")
             elif cmd == "search" and len(parts) > 1:
                 filename = parts[1]
                 print(f"Searching for files with name: {filename}")
                 results = p.send_search_request_with_file_name_or_keyword(filename, is_keyword=False)
                 print(f"Found {len(results)} files:")
                 for i, file_info in enumerate(results):
-                    print(f"  [{i+1}] {file_info.name} ({file_info.size} bytes)")
+                    print(f"  [{i+1}] {file_info.name} {file_info.id} {file_info.owner_id} ({file_info.size} bytes)")
             
             elif cmd == "keyword" and len(parts) > 1:
                 keyword = parts[1]
@@ -63,13 +71,31 @@ def main():
                 results = p.send_search_request_with_file_name_or_keyword(keyword, is_keyword=True)
                 print(f"Found {len(results)} files:")
                 for i, file_info in enumerate(results):
-                    print(f"  [{i+1}] {file_info.name} ({file_info.size} bytes)")
-            
+                    print(f"  [{i+1}] {file_info.name} {file_info.owner_id} {file_info.id} ({file_info.size}  bytes)")
+            elif cmd == "download" and len(parts) > 1:
+                download_parts = parts[1].split(maxsplit=1)
+                if len(download_parts) == 2:
+                    peer_username = download_parts[0]
+                    file_id = download_parts[1]
+                    print(f"Downloading file {file_id} from peer {peer_username}...")
+                    p.send_download_request(peer_username, file_id)
+                else:
+                    print("Invalid command. Usage: download <username> <file-id>")
             elif cmd == "list":
                 print("Requesting updated peer list...")
                 p.request_peer_list()
                 print(f"Available peers: {', '.join(p.available_peers.keys()) if p.available_peers else 'None'}")
-            
+                # print(f"shared files: {p.file_service.shared_files}")
+                # print(f"files info : {p.file_service.shared_files_info}")
+            elif cmd == "list-shared":
+                print("Listing all shared files...")
+                shared_files = p.file_service.get_shared_files()
+                if not shared_files:
+                    print("No files shared.")
+                else:
+                    print(f"Shared files ({len(shared_files)}):\n")
+                    for file_info in shared_files:
+                        print(f"  - {file_info.name} ({file_info.size} bytes)\n")
             elif cmd == "connect":
                 print("Connecting to available peers...")
                 p.connect_to_peers()
