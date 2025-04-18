@@ -3,10 +3,10 @@ from random import randint
 
 def show_help():
     print("\nAvailable commands:")
+    print("  share <file-path> <peers-username> - Share specfic file with specfic peers")
     print("  search <filename> - Search for files by name")
     print("  keyword <keyword> - Search for files by keyword")
     print("  list - Request updated peer list")
-    print("  connect - Connect to all available peers")
     print("  help - Show this help message")
     print("  exit - Quit the program")
 
@@ -18,7 +18,7 @@ def main():
 
     username = input("Enter your username: ")
 
-    p = Peer(username, '127.0.1.1', 15601, self_tcp_port, self_udp_port)
+    p = Peer(username, '127.0.1.1', 5000, self_tcp_port, self_udp_port)
     p.start()
     
     print("\n=== P2P File Sharing System ===")
@@ -32,9 +32,16 @@ def main():
             
             if cmd == "exit":
                 print("Exiting...")
-                p.running = False
+                p.stop()
                 break
                 
+            elif cmd == "share":
+                if len(parts) > 1:
+                    file_path, peers = parts[1].split(maxsplit=1)
+                    print(f"Sharing file: {file_path} with peers: {peers}")
+                    p.file_service.share_file(file_path, peer_list=peers.split(','))
+                else:
+                    print("Invalid command. Usage: share <file-path> <peers-username>")
             elif cmd == "search" and len(parts) > 1:
                 filename = parts[1]
                 print(f"Searching for files with name: {filename}")

@@ -39,19 +39,26 @@ class Peer:
         self.running = True
         self.initialize_peer_server_socket()
         threading.Thread(target=self.listen_for_other_peers, daemon=True).start()
-        self.register_with_server()
-        self.start_heartbeat_thread()
-        self.request_peer_list()
+        threading.Thread(target=self._registration_sequence, daemon=True).start()
         self.file_service.start()
 
+    def _registration_sequence(self):
+        try:
+            self.register_with_server()
+            self.start_heartbeat_thread()
+            self.request_peer_list()
+        except Exception as e:
+            logging.error(f"Error in registration sequence: {e}")
+            self.running = False
+    
     def register_with_server(self):
         try:
             self.rendezvous_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.rendezvous_server_socket.connect(self.server_address)
-            self.rendezvous_server_socket.sendall(f"#JOIN {self.username} {socket.gethostbyname(socket.gethostname())} {self.tcp_port}#\n".encode())
+            self.rendezvous_server_socket.sendall(f"#JOIN {self.username} {socket.gethostbyname(socket.gethostname())} {self.tcp_port}#".encode())
             response = self.rendezvous_server_socket.recv(1024).decode()
             if response.startswith("join-success"):
-                print("Registered with server")
+                print("Registered with server\n")
             else:
                 print("Failed to register with server")
         except Exception as e:
@@ -62,7 +69,7 @@ class Peer:
             udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             while self.running:
                 try:
-                    udp_sock.sendto(f"heartbeat {self.username}\n".encode(), (self.server_address[0], UDP_PORT))
+                    udp_sock.sendto(f"Heartbeat {self.username}\n".encode(), (self.server_address[0], UDP_PORT))
                 except Exception as e:
                     print(f"Error sending heartbeat: {e}")
                 time.sleep(HEARTBEAT_INTERVAL)
@@ -74,9 +81,8 @@ class Peer:
             if self.rendezvous_server_socket is None:
                 print("Not connected to rendezvous server")
                 return
-            self.rendezvous_server_socket.sendall("#LIST".encode())
+            self.rendezvous_server_socket.sendall("#LIST#".encode())
             response = self.rendezvous_server_socket.recv(4096).decode()
-            print(f"Received peer list: {response}")
             if not response:
                 return
             self.available_peers = {}
@@ -85,12 +91,17 @@ class Peer:
                 if peers_str: 
                     peer_list = peers_str.split(',')
                     for peer in peer_list:
-                        peer_dict = ast.literal_eval(peer)
-                        username = peer_dict.get("username")
-                        ip = peer_dict.get("ip")
-                        port = peer_dict.get("port")
+                        peer_parts = peer.strip().rsplit(' ', 1)
+                        if len(peer_parts) != 2:
+                            raise ValueError(f"Invalid peer format: {peer}")
+                        
+                        username = peer_parts[0].strip()
+                        address = peer_parts[1].strip().strip('()')  # Remove parentheses
+                        ip, port = address.split(':')
+                        port = int(port)
+
                         if username != self.username:
-                            self.available_peers[username] = (ip, port)       
+                            self.available_peers[username] = (ip, port)        
             return
         except Exception as e:
             print(f"Error requesting peer list: {e}")
@@ -235,11 +246,13 @@ class Peer:
                 send_command = f"search by keyword {name}" if is_keyword else f"search {name}"
                 connection.sendall(send_command.encode())
                 data = connection.recv(1024).decode()
-                if data:
+                if data.startswith('info|'):
                     files_info_str = data.strip().split('\n')
                     for file_info_str in files_info_str:
                         file_info = self.file_service.parse_file_info(file_info_str)
                         files_info.append(file_info)
+                else:
+                    print(f"Peer {connection} responded with: {data}")
                 self._close_connection(connection)
             return files_info
         except Exception as e:

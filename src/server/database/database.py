@@ -2,8 +2,13 @@ from pymongo import MongoClient
 
 class DB:
     def __init__(self):
-        self.client = MongoClient('mongodb://localhost:27017')
-        self.db = self.client['peer_registry']
+        try:
+            self.client = MongoClient('mongodb://localhost:27017')
+            self.db = self.client['peer_registry']
+            print("Connected to MongoDB successfully")
+        except Exception as e:
+            print(f"Failed to connect to MongoDB: {e}")
+            raise
 
     def is_account_exist(self, username):
         return self.db.accounts.count_documents({'username': username}) > 0
@@ -30,7 +35,7 @@ class DB:
         }
         self.db.online_peers.insert_one(online_peer)
 
-    def get_all_online_peers(self):
+    def get_online_peers(self):
         return list(self.db.online_peers.find({}))
 
     def user_logout(self, username):
