@@ -54,7 +54,7 @@ class FileService:
         with open(file_path, 'rb') as src, open(os.path.join(SHARED_DIR, file_id), 'wb') as dst:
             dst.write(src.read())
         
-        peers_to_share = peer_list if peer_list is not None else self.peer.peers
+        peers_to_share = peer_list if peer_list is not None else self.peer.available_peers.keys()
     
         for peer in peers_to_share:
             self.shared_files.setdefault(peer, []).append(file_id)
@@ -94,13 +94,13 @@ class FileService:
     
     def get_shared_files_by_peer_and_file_name(self, peer: str, file_name: str) -> List[FileInfo]:
         all_files = []
-        for peer, file_ids in self.shared_files.items():
-            for file_id in file_ids:
-                file_info = self.shared_files_info.get(file_id)
-                if file_info and file_name.lower() in file_info.name.lower():
-                    print(f"Found matching file: {file_info.name}")
-                    all_files.append(file_info)
-        print(f"Found {str(all_files)} matching files for {file_name}")
+        file_ids = self.shared_files.get(peer, [])
+        for file_id in file_ids:
+            file_info = self.shared_files_info.get(file_id)
+            if file_info and file_name.lower() in file_info.name.lower():
+                print(f"Found matching file: {file_info.name}")
+                all_files.append(file_info)
+        print(f"Found {str(all_files)} matching files for {file_name} shared with {peer}")
         return all_files
     
     def parse_file_info(self, metadata: str) -> FileInfo:

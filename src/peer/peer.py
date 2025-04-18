@@ -92,12 +92,11 @@ class Peer:
             print(f"Error requesting peer list: {e}")
             return []
 
-    def _handle_search_request(self, client_socket, name):
+    def _handle_search_request(self, peer_username, client_socket, name):
         try:
-            peer = client_socket.getpeername()
-            matching_files = self.file_service.get_shared_files_by_peer_and_file_name(peer,name)
-            logging.info(f"Found {len(matching_files)} matching files for {name} for {peer}")
-            files_info= []
+            matching_files = self.file_service.get_shared_files_by_peer_and_file_name(peer_username,name)
+            logging.info(f"Found {len(matching_files)} matching files for {name} for {peer_username}")
+            files_info = []
             for file_info in matching_files:
                 metadata = self.file_service.format_file_info(file_info)
                 files_info.append(metadata)
@@ -109,11 +108,14 @@ class Peer:
         finally:
             client_socket.close()
 
+    def _handle_search_request_keyword(self, peer_username, client_socket, keyword):
+        print("Not implemented yet")
+
     def _handle_download_request(self, client_socket, file_id):
         self.file_service.upload_file(file_id, client_socket)
         client_socket.close()
 
-    def _handle_upload_request(self, client_socket, file_id):
+    def _handle_upload_request(self, peer_username, client_socket, file_id):
         self.file_service.download_file(file_id, client_socket)
         client_socket.close()
 
@@ -155,36 +157,52 @@ class Peer:
                     break
                 command = data.decode()
                 logging.info(f"Received command from {address}: {command}")
-                if command.startswith("search"):
-                    self._handle_search_request(client_socket, command.split()[1])
+                if command.startswith("search by keyword"):
+                    self._handle_search_request_keyword(peer_username , client_socket, command.split()[1])
+                    logging.info(f"Search request by keyword handled for {address}")
+                elif command.startswith("search"):
+                    self._handle_search_request(peer_username, client_socket, command.split()[1])
                     logging.info(f"Search request handled for {address}")
                 elif command.startswith("download"):
-                    self._handle_download_request(client_socket, command.split()[1])
+                    self._handle_download_request(peer_username, client_socket, command.split()[1])
                     logging.info(f"Download request handled for {address}")
                 elif command.startswith("upload"):
-                    self._handle_upload_request(client_socket, command.split()[1])
+                    self._handle_upload_request(peer_username, client_socket, command.split()[1])
                     logging.info(f"Upload request handled for {address}")
                 break
         except Exception as e:
-            print(f"Error handling peer connection: {e}")
+            if peer_username is not None and peer_username in self.active_connections:
+                del self.active_connections[peer_username]
             logging.error(f"Error handling peer connection: {e}")
 
     def send_search_request_with_file_name(self, name)->list[FileInfo]:
         try:
-            files = []
-            for peer in self.peers:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(4)
-                s.connect(peer)
-                s.sendall(f"search {name}".encode())
-                response = s.recv(4096).decode()
-                if not response:
-                    continue
-                files_info = response.strip().split('\n')
-                for file_info in files_info:
-                    metadata = self.file_service.parse_file_info(file_info)
-                    files.append(metadata)
-            return files
+            files_info=[]
+            for connection in self.active_connections.values():
+                connection.sendall(f"search {name}".encode())
+                data = connection.recv(1024).decode()
+                if data:
+                    files_info_str = data.strip().split('\n')
+                    for file_info_str in files_info_str:
+                        file_info = self.file_service.parse_file_info(file_info_str)
+                        files_info.append(file_info)
+            return files_info
+        except Exception as e:
+            print(f"Error sending search request: {e}")
+        return []
+
+    def send_search_request_with_keyword(self, keyword)->list[FileInfo]:
+        try:
+            files_info=[]
+            for connection in self.active_connections.values():
+                connection.sendall(f"search by keyword {keyword}".encode())
+                data = connection.recv(1024).decode()
+                if data:
+                    files_info_str = data.strip().split('\n')
+                    for file_info_str in files_info_str:
+                        file_info = self.file_service.parse_file_info(file_info_str)
+                        files_info.append(file_info)
+            return files_info
         except Exception as e:
             print(f"Error sending search request: {e}")
         return []
