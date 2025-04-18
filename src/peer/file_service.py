@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple
 from dataclasses import dataclass
 import os
@@ -44,7 +45,7 @@ class FileService:
             id=file_id,
             name=file_name,
             size=file_size,
-            owner_id=self.peer.id,
+            owner_id=self.peer.username,
             mime_type=mime_type,
             keywords=keywords,
             description=description,
@@ -61,17 +62,17 @@ class FileService:
         self.shared_files_info[file_id] = file_info
         return file_info
     
-    def unshare_file(self, file_id: str, peers: List[str] = None):
+    def unshare_file(self, file_id: str):
         if file_id not in self.shared_files_info:
             raise ValueError(f"File ID {file_id} not found in shared files.")
         
-        peers_to_unshare = peers if peers is not None else self.peer.peers_usernames
+        peers_to_unshare = self.peer.available_peers.keys()
         for peer in peers_to_unshare:
             if peer in self.shared_files and file_id in self.shared_files[peer]:
                 self.shared_files[peer].remove(file_id)
                 if not self.shared_files[peer]:
                     del self.shared_files[peer]
-                
+
         del self.shared_files_info[file_id]
         os.remove(os.path.join(SHARED_DIR, file_id))
         print(f"File {file_id} unshared and removed from shared files.")
@@ -100,7 +101,7 @@ class FileService:
             if file_info and file_name.lower() in file_info.name.lower():
                 print(f"Found matching file: {file_info.name}")
                 all_files.append(file_info)
-        print(f"Found {str(all_files)} matching files for {file_name} shared with {peer}")
+        logging.info(f"Found {len(all_files)} files matching '{file_name}' for peer '{peer}'.")
         return all_files
     
     def parse_file_info(self, metadata: str) -> FileInfo:
@@ -131,8 +132,6 @@ class FileService:
     
     def download_file(self, file_id: str, socket: socket.socket):
         try:
-            socket.sendall(f"download {file_id}\n".encode())
-
             upload_signal = socket.recv(1024).decode().strip()
             if upload_signal != "upload":
                 raise ValueError(f"Expected 'upload' signal, but received: {upload_signal}")
@@ -156,8 +155,13 @@ class FileService:
         
 
 
-    def upload_file(self, file_id: str, socket: socket.socket):
-        print(f"Uploading file {file_id}")
+    def upload_file(self, peer_username: str, file_id: str, socket: socket.socket):
+        # check wheathe rthis username is alowed to download or not
+        if peer_username not in self.shared_files or file_id not in self.shared_files[peer_username]:
+            logging.error(f"File {file_id} is not shared with {peer_username}.")
+            socket.sendall(f"not-allowed\n".encode())
+            return
+        logging.info(f"Uploading file {file_id} to {peer_username}.")
         socket.sendall(f"upload\n".encode())
         file_info = self.shared_files_info[file_id]
         metadata = self.format_file_info(file_info)
