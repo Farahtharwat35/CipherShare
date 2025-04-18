@@ -8,6 +8,11 @@ authors = [
     { name = "Mustafa AbdelRahman" },
     { name = "Ahmed Nabieh" },
 ]
+packages = [
+    { include = "src", from = "./" },
+    { include = "peer" , from ="./src/peer" },
+    { include = "server" , from ="./src/server" },
+]
 readme = ""
 requires-python = ">=3.10"
 dependencies = [

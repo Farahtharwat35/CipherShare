@@ -1,5 +1,12 @@
+import os
+import sys
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.insert(0, project_root)
 from peer import Peer
 from random import randint
+from src.config.config import SERVER_HOST, TCP_PORT
+
+
 
 def show_help():
     print("\nAvailable commands:")
@@ -18,7 +25,7 @@ def main():
 
     username = input("Enter your username: ")
 
-    p = Peer(username, '127.0.1.1', 5000, self_tcp_port, self_udp_port)
+    p = Peer(username, SERVER_HOST, TCP_PORT, self_tcp_port, self_udp_port)
     p.start()
     
     print("\n=== P2P File Sharing System ===")

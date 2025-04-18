@@ -1,11 +1,14 @@
+import os
 import socket
 import select
+import sys
 
-from globals import udp_port_numbers
 from database import DB
 from client_thread import ClientThread
-from globals import tcpThreads,udpThreads
-from config import TCP_PORT, UDP_PORT
+from globals import tcp_connections,udp_connections
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.insert(0, project_root)
+from src.config.config import TCP_PORT, UDP_PORT
 from threading import Lock
 from udp_handler import UDPServer
 
@@ -44,7 +47,7 @@ while inputs:
         if s is tcpSocket:
             clientSock, addr = tcpSocket.accept()
             thread = ClientThread(addr[0], addr[1], clientSock, db)
-            tcpThreads[addr[0]] = thread
+            tcp_connections[addr[0]] = clientSock
             thread.start()
 
         elif s is udpSocket:
@@ -53,16 +56,16 @@ while inputs:
             print(f"UDP MESSAGE FROM {clientAddr[0]}:{clientAddr[1]} -> {message}")
 
             if message[0] == "Heartbeat":
-                username = clientAddr[0]
+                ip_addr = clientAddr[0]
                 with lock:
-                    if username in tcpThreads:
-                        if username not in udpThreads:
-                            thread = UDPServer(username,tcpThreads[username],db)
-                            udpThreads[username] = thread
+                    if ip_addr in tcp_connections:
+                        if ip_addr not in udp_connections:
+                            thread = UDPServer(ip_addr,tcp_connections[ip_addr],db)
+                            udp_connections[ip_addr] = thread
                             thread.start()
                             thread.timer.start()
                         else:
-                            udpThreads[username].reset_timer()
+                            udp_connections[ip_addr].reset_timer()
                         udpSocket.sendto("HELLO_ACK".encode(), clientAddr)
 
 # Cleanup
