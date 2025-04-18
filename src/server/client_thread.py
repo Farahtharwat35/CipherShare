@@ -101,8 +101,8 @@ class ClientThread(threading.Thread):
 
     def handle_online_peers_listing(self, message: list):
         """List all online peers"""
-        online_peers = self.db.get_online_peers()
-        response = "Online peers: " + ', '.join(online_peers)
+        # online_peers = self.db.get_online_peers()
+        response = "Online peers: " + ', '.join([])
         logging.info(f"Send to {self.ip}:{self.port} -> {response}")
         self.tcpClientSocket.send(response.encode())
 

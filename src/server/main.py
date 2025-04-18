@@ -10,7 +10,7 @@ from threading import Lock
 print("\033[31mRegistry started...\033[0m")
 
 # Server ports
-TCP_PORT = 15600
+TCP_PORT = 15601
 UDP_PORT = 15500
 
 # Get host IP address
