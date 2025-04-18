@@ -30,6 +30,9 @@ class DB:
         }
         self.db.online_peers.insert_one(online_peer)
 
+    def get_all_online_peers(self):
+        return list(self.db.online_peers.find({}))
+
     def user_logout(self, username):
         self.db.online_peers.delete_one({"username": username})
 
