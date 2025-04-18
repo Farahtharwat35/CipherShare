@@ -40,6 +40,7 @@ class DB:
 
     def user_logout(self, ip):
         self.db.online_peers.delete_one({"ip": ip})
+        self.db.online_peers.delete_one({ "username": username })
 
     def get_peer_ip_and_port(self, username):
         res = self.db.online_peers.find_one({"username": username})
