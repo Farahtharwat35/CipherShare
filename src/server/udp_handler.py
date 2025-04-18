@@ -1,7 +1,7 @@
 import threading
 
-from src.server.globals import udp_port_numbers
-from src.server.globals  import tcpThreads, onlinePeers
+from globals import udp_port_numbers
+from globals  import tcpThreads, onlinePeers
 
 
 class UDPServer(threading.Thread):

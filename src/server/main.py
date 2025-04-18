@@ -1,12 +1,10 @@
-# server.py
-
 import socket
 import select
 
 from globals import udp_port_numbers
-from src.database.database import DB
-from src.server.client_thread import ClientThread
-from src.server.globals import tcpThreads
+from database import DB
+from client_thread import ClientThread
+from globals import tcpThreads
 from threading import Lock
 
 print("\033[31mRegistry started...\033[0m")
