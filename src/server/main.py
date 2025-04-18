@@ -51,22 +51,25 @@ while inputs:
             thread.start()
 
         elif s is udpSocket:
-            message, clientAddr = s.recvfrom(1024)
-            message = message.decode().split()
-            print(f"UDP MESSAGE FROM {clientAddr[0]}:{clientAddr[1]} -> {message}")
+            try:
+                message, clientAddr = s.recvfrom(1024)
+                message = message.decode().split()
+                print(f"UDP MESSAGE FROM {clientAddr[0]}:{clientAddr[1]} -> {message}")
 
-            if message[0] == "Heartbeat":
-                ip_addr = clientAddr[0]
-                with lock:
-                    if ip_addr in tcp_connections:
-                        if ip_addr not in udp_connections:
-                            thread = UDPServer(ip_addr,tcp_connections[ip_addr],db)
-                            udp_connections[ip_addr] = thread
-                            thread.start()
-                            thread.timer.start()
-                        else:
-                            udp_connections[ip_addr].reset_timer()
-                        udpSocket.sendto("HELLO_ACK".encode(), clientAddr)
+                if message[0] == "Heartbeat":
+                    ip_addr = clientAddr[0]
+                    with lock:
+                        if ip_addr in tcp_connections:
+                            if ip_addr not in udp_connections:
+                                thread = UDPServer(ip_addr, tcp_connections[ip_addr], db)
+                                udp_connections[ip_addr] = thread
+                                thread.start()
+                                thread.timer.start()
+                            else:
+                                udp_connections[ip_addr].reset_timer()
+                            udpSocket.sendto("HELLO_ACK".encode(), clientAddr)
+            except Exception as e:
+                print(f"Error handling UDP message: {e}")
 
 # Cleanup
 tcpSocket.close()
