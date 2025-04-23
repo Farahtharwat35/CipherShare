@@ -10,7 +10,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
 from src.config.config import TCP_PORT, UDP_PORT
 from threading import Lock
-from udp_handler import UDPServer
+from in_memory_storage import Cache
 
 
 def main():
@@ -40,6 +40,8 @@ def main():
 
     inputs = [tcpSocket, udpSocket]
     lock = Lock()
+    
+    cache = Cache()
 
     try:
         while inputs:
@@ -58,17 +60,23 @@ def main():
                     print(f"UDP MESSAGE FROM {clientAddr[0]}:{clientAddr[1]} -> {message}")
 
                     if message[0] == "Heartbeat":
-                        print(f"Heartbeat from {message[1]}")
-                        port_number = clientAddr[1]
+                        if len(message) < 3:
+                            print("Invalid Heartbeat message format")
+                            continue
+                        username = message[1]
+                        sessionKey = message[2]
+                        if cache.get(sessionKey) is None or username != cache.get(sessionKey):
+                            print(f"Invalid sessionKey for user {username}: {sessionKey}")
+                            udpSocket.sendto("INVALID_SESSION_KEY".encode(), clientAddr)
+                            continue
+                        print(f"Heartbeat from {username}")
                         with lock:
-                                if port_number not in udp_connections:
-                                    thread = UDPServer(port_number, db, message[1])
-                                    udp_connections[port_number] = thread
-                                    thread.start()
-                                    thread.timer.start()
+                                if username not in udp_connections:
+                                    udpSocket.sendto("SESSION_NOT_FOUND".encode(), clientAddr)
+                                    print(f"Session not found for user {username}")
                                 else:
-                                    udp_connections[port_number].reset_timer()
-                                udpSocket.sendto("HELLO_ACK".encode(), clientAddr)
+                                    udp_connections[username].reset_timer(sessionKey)
+                                    udpSocket.sendto("HELLO_ACK".encode(), clientAddr)
     finally:
         # Cleanup
         tcpSocket.close()
