@@ -44,7 +44,6 @@ class Peer:
 
     def _registration_sequence(self):
         try:
-            self.register_with_server()
             self.start_heartbeat_thread()
             self.request_peer_list()
         except Exception as e:

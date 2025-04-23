@@ -13,10 +13,11 @@ class DB:
     def is_account_exist(self, username):
         return self.db.accounts.count_documents({'username': username}) > 0
 
-    def register(self, username, password):
+    def register(self, username, hashed_password):
+        """Register a new user with a hashed password."""
         account = {
             "username": username,
-            "password": password
+            "password": hashed_password  # Store the hashed password
         }
         self.db.accounts.insert_one(account)
 
