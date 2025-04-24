@@ -2,7 +2,7 @@ import threading
 import queue
 import logging
 import re
-import bcrypt
+import hashlib  # Import hashlib for SHA-256
 from udp_handler import UDPServer
 from static import static
 from in_memory_storage import Cache
@@ -140,8 +140,8 @@ class ClientThread(threading.Thread):
             response = "join-exist"
             print(f"User {message[1]} already exists")
         else:
-            # Hash the password before saving it
-            hashed_password = bcrypt.hashpw(message[4].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            # Hash the password using SHA-256 before saving it
+            hashed_password = hashlib.sha256(message[4].encode('utf-8')).hexdigest()
             self.db.register(message[1], hashed_password)
             self.db.save_online_peer(message[1], message[2], message[3])
             sessionKey = self._generateSessionKey(message[1])
@@ -167,7 +167,9 @@ class ClientThread(threading.Thread):
             print(f"Login failed: User {message[1]} is already online")
         else:
             retrieved_hashed_pass = self.db.get_password(message[1])
-            if retrieved_hashed_pass and bcrypt.checkpw(message[2].encode('utf-8'), retrieved_hashed_pass.encode('utf-8')):
+            # Hash the provided password and compare it with the stored hash
+            hashed_password = hashlib.sha256(message[2].encode('utf-8')).hexdigest()
+            if retrieved_hashed_pass and hashed_password == retrieved_hashed_pass:
                 self.username = message[1]
                 sessionKey = self._generateSessionKey(message[1])
                 response = f"login-success {sessionKey}"
