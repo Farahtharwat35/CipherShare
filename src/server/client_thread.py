@@ -168,9 +168,10 @@ class ClientThread(threading.Thread):
         else:
             retrieved_hashed_pass = self.db.get_password(message[1])
             # Hash the provided password and compare it with the stored hash
-            hashed_password = hashlib.sha256(message[2].encode('utf-8')).hexdigest()
+            hashed_password = hashlib.sha256(message[4].encode('utf-8')).hexdigest()
             if retrieved_hashed_pass and hashed_password == retrieved_hashed_pass:
                 self.username = message[1]
+                self.db.save_online_peer(message[1], message[2], message[3])
                 sessionKey = self._generateSessionKey(message[1])
                 response = f"login-success {sessionKey}"
                 print(f"User {message[1]} successfully logged in from {self.ip}:{self.port}")

@@ -56,7 +56,8 @@ def main():
                     continue
             elif choice == "0":
                 print("Logging in...")
-                request = f"#LOGIN {username} {password} {self_tcp_port}#"
+                local_ip = socket.gethostbyname(socket.gethostname())  # Get local IP address
+                request = f"#LOGIN {username} {local_ip} {self_tcp_port} {password}#"
                 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 client_socket.connect((SERVER_HOST, TCP_PORT))
                 client_socket.send(request.encode())
