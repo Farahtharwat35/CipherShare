@@ -1,12 +1,12 @@
 import os
 import sys
+import getpass  # For secure password input
+import socket
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
 from peer import Peer
 from random import randint
 from src.config.config import SERVER_HOST, TCP_PORT
-
-
 
 def show_help():
     print("\nAvailable commands:")
@@ -25,9 +25,59 @@ def main():
 
     print(f"TCP Port: {self_tcp_port}, UDP Port: {self_udp_port}")
 
-    username = input("Enter your username: ")
+    username = None
+    session_key = None
 
+    while True:
+        try:
+            choice = input("Enter 0 to login or 1 to register: ").strip()
+            if choice not in ["0", "1"]:
+                print("Invalid choice. Please enter 0 or 1.")
+                continue
+
+            username = input("Enter your username: ").strip()
+            password = getpass.getpass("Enter your password: ").strip()
+
+            if choice == "1":
+                print("Registering...")
+                local_ip = socket.gethostbyname(socket.gethostname())  # Get local IP address
+                request = f"#JOIN {username} {local_ip} {self_tcp_port} {password}#"
+                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                client_socket.connect((SERVER_HOST, TCP_PORT))
+                client_socket.send(request.encode())
+                response = client_socket.recv(1024).decode()
+                print(response)
+                client_socket.close()
+                if "join-success" in response:
+                    session_key = response.split()[-1]
+                    print(f"Registered successfully as {username}.")
+                else:
+                    print("Registration failed.")
+                    continue
+            elif choice == "0":
+                print("Logging in...")
+                local_ip = socket.gethostbyname(socket.gethostname())  # Get local IP address
+                request = f"#LOGIN {username} {local_ip} {self_tcp_port} {password}#"
+                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                client_socket.connect((SERVER_HOST, TCP_PORT))
+                client_socket.send(request.encode())
+                response = client_socket.recv(1024).decode()
+                # print(response)
+                client_socket.close()
+                if "login-success" in response:
+                    session_key = response.split()[-1]
+                    print(f"Logged in successfully as {username}.")
+                else:
+                    print("Login failed.")
+                    continue
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            continue
+
+    # Start Peer instance only after successful login or registration
     p = Peer(username, SERVER_HOST, TCP_PORT, self_tcp_port, self_udp_port)
+    p.sessionKey = session_key  # Set session key after successful login/registration
     p.start()
     
     print("\n=== P2P File Sharing System ===")

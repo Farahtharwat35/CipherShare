@@ -31,6 +31,7 @@ class Peer:
         self.connection_lock = threading.Lock()
         self.tcp_port = self_tcp_port
         self.udp_port = self_udp_port
+        self.sessionKey = None
         
         self.rendezvous_server_socket = None
 
@@ -43,7 +44,6 @@ class Peer:
 
     def _registration_sequence(self):
         try:
-            self.register_with_server()
             self.start_heartbeat_thread()
             self.request_peer_list()
         except Exception as e:
@@ -56,7 +56,11 @@ class Peer:
             self.rendezvous_server_socket.connect(self.server_address)
             self.rendezvous_server_socket.sendall(f"#JOIN {self.username} {self._get_local_ip_address()} {self.tcp_port}#".encode())
             response = self.rendezvous_server_socket.recv(1024).decode()
-            if response.startswith("join-success"):
+            responseParts = response.split()
+            print(f"Received from server: {responseParts}")
+            if response.startswith("join-success") and len(responseParts) == 2:
+                sessionKey = responseParts[1]
+                self.sessionKey = sessionKey
                 print("Registered with server\n")
             else:
                 print("Failed to register with server")
@@ -68,7 +72,7 @@ class Peer:
             udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             while self.running:
                 try:
-                    udp_sock.sendto(f"Heartbeat {self.username}\n".encode(), (self.server_address[0], UDP_PORT))
+                    udp_sock.sendto(f"Heartbeat {self.username} {self.sessionKey}\n".encode(), (self.server_address[0], UDP_PORT))
                 except Exception as e:
                     print(f"Error sending heartbeat: {e}")
                 time.sleep(HEARTBEAT_INTERVAL)
@@ -80,7 +84,7 @@ class Peer:
             if self.rendezvous_server_socket is None:
                 print("Not connected to rendezvous server")
                 return
-            self.rendezvous_server_socket.sendall("#LIST#".encode())
+            self.rendezvous_server_socket.sendall(f"#{self._authCmd("LIST")}#".encode())
             response = self.rendezvous_server_socket.recv(4096).decode()
             if not response:
                 return
@@ -324,3 +328,6 @@ class Peer:
             import netifaces as ni
             HOST = ni.ifaddresses('en0')[ni.AF_INET][0]['addr']
         return HOST
+
+    def _authCmd(self, cmd):
+        return f"{cmd}:{self.sessionKey}"

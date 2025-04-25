@@ -2,10 +2,13 @@ import threading
 import queue
 import logging
 import re
-import bcrypt
+import hashlib  # Import hashlib for SHA-256
 from udp_handler import UDPServer
 from static import static
+from in_memory_storage import Cache
+from globals import tcp_connections, udp_connections
 import socket
+import uuid
 
 
 class ClientThread(threading.Thread):
@@ -26,6 +29,9 @@ class ClientThread(threading.Thread):
             static.Command.LOGOUT.value: self.handle_logout,
             static.Command.LIST.value: self.handle_online_peers_listing
         }
+        self.unauthenticated_commands = [static.Command.JOIN.value,
+                                         static.Command.LOGIN.value,]
+        self.cache = Cache()
         # atexit.register(self._cleanup)
 
         print(f"New thread started for {ip}:{port}")
@@ -97,6 +103,20 @@ class ClientThread(threading.Thread):
             return
 
         command = message[0]
+        if command not in self.unauthenticated_commands:
+            sessionKey = None
+            if ':' in message[0]:
+                command, sessionKey = message[0].split(':', 1)
+
+            if command is None or sessionKey is None \
+                    or self.cache.get(sessionKey) is None \
+                    or self.cache.get(sessionKey) != self.username:
+                print(f"Session key {sessionKey} not found, ignoring message")
+                response = "invalid-session"
+                self.tcpClientSocket.send(response.encode())
+                return
+            message[0] = command
+
         print(f"Processing command: {command}")
         if command in self.handlers:
             self.handlers[command](message)
@@ -111,7 +131,7 @@ class ClientThread(threading.Thread):
 
     def handle_peer_join(self, message: list):
         print(f"Processing JOIN request from {self.ip}:{self.port}")
-        if len(message) < 3:
+        if len(message) < 5:
             print(f"Invalid JOIN message format: {message}")
             logging.error("Invalid JOIN message format")
             return
@@ -120,8 +140,17 @@ class ClientThread(threading.Thread):
             response = "join-exist"
             print(f"User {message[1]} already exists")
         else:
-            self.db.save_online_peer(message[1], message[2],message[3])
-            response = "join-success"
+            # Hash the password using SHA-256 before saving it
+            hashed_password = hashlib.sha256(message[4].encode('utf-8')).hexdigest()
+            self.db.register(message[1], hashed_password)
+            self.db.save_online_peer(message[1], message[2], message[3])
+            sessionKey = self._generateSessionKey(message[1])
+            self.username = message[1]
+            response = f"join-success {sessionKey}"
+            self.udpServer = UDPServer(self.port, self.db, self.username, sessionKey=sessionKey)
+            udp_connections[self.username] = self.udpServer
+            self.udpServer.start()
+            self.udpServer.timer.start()
             print(f"New user {message[1]} successfully registered")
         logging.info(f"Send to {self.ip}:{self.port} -> {response}")
         print(f"Sending response to {self.ip}:{self.port}: {response}")
@@ -138,12 +167,16 @@ class ClientThread(threading.Thread):
             print(f"Login failed: User {message[1]} is already online")
         else:
             retrieved_hashed_pass = self.db.get_password(message[1])
-            if bcrypt.checkpw(message[2].encode('utf-8'), retrieved_hashed_pass.encode('utf-8')):
+            # Hash the provided password and compare it with the stored hash
+            hashed_password = hashlib.sha256(message[4].encode('utf-8')).hexdigest()
+            if retrieved_hashed_pass and hashed_password == retrieved_hashed_pass:
                 self.username = message[1]
-                self.db.user_login(message[1], self.ip, message[3])
-                response = "login-success"
+                self.db.save_online_peer(message[1], message[2], message[3])
+                sessionKey = self._generateSessionKey(message[1])
+                response = f"login-success {sessionKey}"
                 print(f"User {message[1]} successfully logged in from {self.ip}:{self.port}")
-                self.udpServer = UDPServer(self.ip, self.tcpClientSocket, self.db)  # Using IP instead of username
+                self.udpServer = UDPServer(self.port, self.db, self.username, sessionKey=sessionKey)
+                udp_connections[self.username] = self.udpServer
                 self.udpServer.start()
                 self.udpServer.timer.start()
                 print(f"UDP server started for user {self.username}")
@@ -178,6 +211,10 @@ class ClientThread(threading.Thread):
             if self.udpServer:
                 self.udpServer.stop()
                 
+            # Then we invalidate session key
+            sessionKey = message[2]
+            self.cache.delete(sessionKey)
+                
             # Then we close socket
             try:
                 self.tcpClientSocket.shutdown(socket.SHUT_RDWR)
@@ -207,15 +244,8 @@ class ClientThread(threading.Thread):
             print(f"Resetting timeout for user {self.username}")
             self.udpServer.reset_timer()
 
-    
-    # def _cleanup(self):
-    #     print("Performing cleanup...")
-    #     try:
-    #         self.tcpClientSocket.close()
-    #         self.udpClientSocket.close()
-    #     except Exception as e:
-    #         print(f"Error during cleanup: {e}")
-    #     finally:
-    #         print("Cleanup completed.")
-
-
+    def _generateSessionKey(self, username: str):
+        sessionKey = str(uuid.uuid4()).replace("-", "").upper()
+        self.cache.set(sessionKey, username)
+        print(f"Generated session key for {username}: {sessionKey}")
+        return sessionKey
