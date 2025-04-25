@@ -68,7 +68,7 @@ def main():
                     session_key = response.split()[-1]
                     print(f"Logged in successfully as {username}.")
                 else:
-                    print("Login failed.")
+                    print("Wrong Username or Password")
                     continue
             break
         except Exception as e:
