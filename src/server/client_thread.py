@@ -2,7 +2,7 @@ import threading
 import queue
 import logging
 import re
-import bcrypt
+import hashlib  # Import hashlib for SHA-256
 from udp_handler import UDPServer
 from static import static
 from in_memory_storage import Cache
@@ -131,7 +131,7 @@ class ClientThread(threading.Thread):
 
     def handle_peer_join(self, message: list):
         print(f"Processing JOIN request from {self.ip}:{self.port}")
-        if len(message) < 3:
+        if len(message) < 5:
             print(f"Invalid JOIN message format: {message}")
             logging.error("Invalid JOIN message format")
             return
@@ -140,7 +140,10 @@ class ClientThread(threading.Thread):
             response = "join-exist"
             print(f"User {message[1]} already exists")
         else:
-            self.db.save_online_peer(message[1], message[2],message[3])
+            # Hash the password using SHA-256 before saving it
+            hashed_password = hashlib.sha256(message[4].encode('utf-8')).hexdigest()
+            self.db.register(message[1], hashed_password)
+            self.db.save_online_peer(message[1], message[2], message[3])
             sessionKey = self._generateSessionKey(message[1])
             self.username = message[1]
             response = f"join-success {sessionKey}"
@@ -164,9 +167,11 @@ class ClientThread(threading.Thread):
             print(f"Login failed: User {message[1]} is already online")
         else:
             retrieved_hashed_pass = self.db.get_password(message[1])
-            if bcrypt.checkpw(message[2].encode('utf-8'), retrieved_hashed_pass.encode('utf-8')):
+            # Hash the provided password and compare it with the stored hash
+            hashed_password = hashlib.sha256(message[4].encode('utf-8')).hexdigest()
+            if retrieved_hashed_pass and hashed_password == retrieved_hashed_pass:
                 self.username = message[1]
-                self.db.user_login(message[1], self.ip, message[3])
+                self.db.save_online_peer(message[1], message[2], message[3])
                 sessionKey = self._generateSessionKey(message[1])
                 response = f"login-success {sessionKey}"
                 print(f"User {message[1]} successfully logged in from {self.ip}:{self.port}")

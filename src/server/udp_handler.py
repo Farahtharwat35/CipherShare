@@ -24,6 +24,7 @@ class UDPServer(threading.Thread):
         print(f"Timer expired for {self.username} - checking if peer should be removed")
         if self.port_number is not None:
             print(f"Removing inactive peer: {self.username}")
+            self.db.user_logout(self.username)
             with self.lock:
                 if self.port_number in udp_connections:
                     print(f"Cleaning up resources for {self.username}")
