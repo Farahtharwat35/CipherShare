@@ -139,7 +139,7 @@ class FileService:
             if upload_signal != "upload":
                 raise ValueError(f"Expected 'upload' signal, but received: {upload_signal}")
             
-            print(f"recieved upload signal from peer")
+            print(f"received upload signal from peer")
 
             metadata = socket.recv(1024).decode().strip()
             file_info = self.parse_file_info(metadata)
@@ -149,7 +149,7 @@ class FileService:
             if start_signal != "start":
                 raise ValueError(f"Expected 'start' signal, but received: {start_signal}")
             
-            print(f"recieved start signal from peer")
+            print(f"received start signal from peer")
             print(f"Starting file download...")
             file_path = os.path.join(RECEIVED_DIR, file_id)
             bytes_received = 0

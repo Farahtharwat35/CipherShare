@@ -6,6 +6,10 @@ import time
 from typing import Tuple
 from file_service import FileInfo, FileService
 import logging
+import os , sys
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.insert(0, project_root)
+from src.utils import get_local_ip_address
 
 
 logging.basicConfig(
@@ -54,7 +58,7 @@ class Peer:
         try:
             self.rendezvous_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.rendezvous_server_socket.connect(self.server_address)
-            self.rendezvous_server_socket.sendall(f"#JOIN {self.username} {self._get_local_ip_address()} {self.tcp_port}#".encode())
+            self.rendezvous_server_socket.sendall(f"#JOIN {self.username} {get_local_ip_address()} {self.tcp_port}#".encode())
             response = self.rendezvous_server_socket.recv(1024).decode()
             responseParts = response.split()
             print(f"Received from server: {responseParts}")
@@ -319,15 +323,61 @@ class Peer:
         self.active_incoming_connections.clear()
         print("Peer stopped")
     
-    def _get_local_ip_address(self):
-        """Get the local IP address of the machine"""
-        HOST = socket.gethostname()
-        try:
-            HOST = socket.gethostbyname(HOST)
-        except socket.gaierror:
-            import netifaces as ni
-            HOST = ni.ifaddresses('en0')[ni.AF_INET][0]['addr']
-        return HOST
-
     def _authCmd(self, cmd):
         return f"{cmd}:{self.sessionKey}"
+
+    def login(self, username: str, password: str, is_register: bool = False) -> bool:
+        """
+        Handle login or registration with the server
+        
+        Args:
+            username: The username to login or register with
+            password: The password for authentication
+            is_register: True if registering a new user, False for login
+            
+        Returns:
+            bool: True if login/registration was successful, False otherwise
+        """
+        try:
+            self.username = username
+            local_ip = get_local_ip_address()
+            
+            # Create socket connection to server
+            self.rendezvous_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.rendezvous_server_socket.connect(self.server_address)
+            
+            # Prepare and send registration/login request
+            if is_register:
+                print("Registering...")
+                request = f"#JOIN {username} {local_ip} {self.tcp_port} {password}#"
+            else:
+                print("Logging in...")
+                request = f"#LOGIN {username} {local_ip} {self.tcp_port} {password}#"
+                
+            self.rendezvous_server_socket.send(request.encode())
+            response = self.rendezvous_server_socket.recv(1024).decode()
+            
+            # Process response
+            response_parts = response.split()
+            success_prefix = "join-success" if is_register else "login-success"
+            
+            if success_prefix in response and len(response_parts) >= 2:
+                self.sessionKey = response_parts[-1]
+                action_type = "Registered" if is_register else "Logged in"
+                print(f"{action_type} successfully as {username}.")
+                return True
+            else:
+                error_message = "Registration failed." if is_register else "Wrong Username or Password"
+                print(error_message)
+                # Close the connection since login failed
+                if self.rendezvous_server_socket:
+                    self.rendezvous_server_socket.close()
+                    self.rendezvous_server_socket = None
+                return False
+                
+        except Exception as e:
+            print(f"Error during {'registration' if is_register else 'login'}: {e}")
+            if self.rendezvous_server_socket:
+                self.rendezvous_server_socket.close()
+                self.rendezvous_server_socket = None
+            return False

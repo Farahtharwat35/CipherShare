@@ -4,6 +4,7 @@ import getpass  # For secure password input
 import socket
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
+from src.utils import get_local_ip_address
 from peer import Peer
 from random import randint
 from src.config.config import SERVER_HOST, TCP_PORT
@@ -25,9 +26,10 @@ def main():
 
     print(f"TCP Port: {self_tcp_port}, UDP Port: {self_udp_port}")
 
-    username = None
-    session_key = None
-
+    # Creating a Peer instance with temporary username
+    p = Peer("", SERVER_HOST, TCP_PORT, self_tcp_port, self_udp_port)
+    
+    # Looping until successful login or user cancellation
     while True:
         try:
             choice = input("Enter 0 to login or 1 to register: ").strip()
@@ -38,49 +40,19 @@ def main():
             username = input("Enter your username: ").strip()
             password = getpass.getpass("Enter your password: ").strip()
 
-            if choice == "1":
-                print("Registering...")
-                local_ip = socket.gethostbyname(socket.gethostname())  # Get local IP address
-                request = f"#JOIN {username} {local_ip} {self_tcp_port} {password}#"
-                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                client_socket.connect((SERVER_HOST, TCP_PORT))
-                client_socket.send(request.encode())
-                response = client_socket.recv(1024).decode()
-                print(response)
-                client_socket.close()
-                if "join-success" in response:
-                    session_key = response.split()[-1]
-                    print(f"Registered successfully as {username}.")
-                else:
-                    print("Registration failed.")
-                    continue
-            elif choice == "0":
-                print("Logging in...")
-                local_ip = socket.gethostbyname(socket.gethostname())  # Get local IP address
-                request = f"#LOGIN {username} {local_ip} {self_tcp_port} {password}#"
-                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                client_socket.connect((SERVER_HOST, TCP_PORT))
-                client_socket.send(request.encode())
-                response = client_socket.recv(1024).decode()
-                # print(response)
-                client_socket.close()
-                if "login-success" in response:
-                    session_key = response.split()[-1]
-                    print(f"Logged in successfully as {username}.")
-                else:
-                    print("Wrong Username or Password")
-                    continue
-            break
+            is_register = (choice == "1")
+            login_success = p.login(username, password, is_register)
+            
+            if login_success:
+                break
         except Exception as e:
             print(f"Error: {e}")
             continue
-
-    # Start Peer instance only after successful login or registration
-    p = Peer(username, SERVER_HOST, TCP_PORT, self_tcp_port, self_udp_port)
-    p.sessionKey = session_key  # Set session key after successful login/registration
+            
+    # Starting the peer after successful login/registration : no waste of resources 
     p.start()
     
-    print("\n=== P2P File Sharing System ===")
+    print("\n=== CipherShare P2P File Sharing System ===")
     show_help()
     
     while p.running:
@@ -135,24 +107,21 @@ def main():
                 print("Requesting updated peer list...")
                 p.request_peer_list()
                 print(f"Available peers: {', '.join(p.available_peers.keys()) if p.available_peers else 'None'}")
-                # print(f"shared files: {p.file_service.shared_files}")
-                # print(f"files info : {p.file_service.shared_files_info}")
+
             elif cmd == "list-shared":
                 print("Listing all shared files...")
                 shared_files = p.file_service.get_shared_files()
                 if not shared_files:
                     print("No files shared.")
                 else:
-                    print(f"Shared files ({len(shared_files)}):\n")
+                    print(f"Shared files ({len(shared_files)}):")
                     for file_info in shared_files:
                         print(f"  - {file_info.name} ({file_info.size} bytes)\n")
             elif cmd == "connect":
                 print("Connecting to available peers...")
-                p.connect_to_peers()
-                
+                p.connect_to_available_peers()          
             elif cmd == "help":
                 show_help()
-                
             else:
                 print("Unknown command. Type 'help' for available commands.")
                 
