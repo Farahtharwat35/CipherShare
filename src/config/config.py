@@ -1,4 +1,4 @@
-import socket
+import socket , logging
 
 SERVER_HOST = socket.gethostname()
 try:
@@ -10,3 +10,9 @@ except socket.gaierror:
 TCP_PORT = 5000
 UDP_PORT = 5001
 PEER_TIMEOUT = 10 # in seconds --> satisfies 3x+1 seconds where x is the interval in seconds between heartbeats (from peers)
+HEARTBEAT_INTERVAL = 3
+LOGGING_LEVEL = logging.basicConfig(
+    filename="peer_connections.log",  
+    level=logging.INFO,              
+    format="%(asctime)s - %(levelname)s - %(message)s"  
+)
