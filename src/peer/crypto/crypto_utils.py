@@ -1,243 +1,272 @@
-import os
+import os , sys
 import hashlib
-import base64
 import logging
-from typing import Tuple, Dict, Optional
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.padding import PKCS7
+from cryptography.hazmat.backends import default_backend
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.insert(0, project_root)
+from src.config.config import P , G
 
 
 class CryptoUtils:
     """Utility class for cryptographic operations in CipherShare."""
     
     def __init__(self):
-        # Our main Diffie-Hellman parameters and keys
-        self.dh_parameters = None
-        self.private_key = None
-        self.public_key = None
+        logging.info("Initializing CryptoUtils with standardized Diffie-Hellman parameters")
         
-        # For storing shared keys with other peers
-        self.shared_keys: Dict[str, bytes] = {}
+        # Creating DH parameters using the standardized values
+        dh_parameter_numbers = dh.DHParameterNumbers(
+            p=P,
+            g=G,
+            q=None  # q is optional
+        )
+        self.parameters = dh_parameter_numbers.parameters(default_backend())
         
-        # Generate our main DH parameters only once on initialization
-        self.generate_dh_parameters()
-        logging.info("Initialized crypto utilities with DH parameters")
-        
-    def generate_dh_parameters(self) -> None:
-        """Generate new Diffie-Hellman parameters."""
-        self.dh_parameters = dh.generate_parameters(generator=2, key_size=2048)
-        self.private_key = self.dh_parameters.generate_private_key()
+        # Generating our private key based on the standard parameters
+        self.private_key = self.parameters.generate_private_key()
+        # Deriving our public key
         self.public_key = self.private_key.public_key()
-        logging.info("Generated new DH key pair")
-    
-    def get_public_key_bytes(self) -> bytes:
-        """Get the public key in bytes format for transmission."""
-        if not self.public_key:
-            self.generate_dh_parameters()
-            
-        return self.public_key.public_bytes(
+        
+        # Storing shared keys for each peer
+        self.shared_keys = {}
+        logging.info("CryptoUtils initialized successfully with standardized parameters")
+        
+    def get_public_key_bytes(self):
+        """
+        Get the public key in serialized form
+        """
+        logging.debug("Serializing public key to bytes")
+        key_bytes = self.public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
-    
-    def get_dh_parameters_bytes(self) -> bytes:
-        """Get the DH parameters in bytes format for transmission."""
-        if not self.dh_parameters:
-            self.generate_dh_parameters()
-            
-        return self.dh_parameters.parameter_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.ParameterFormat.PKCS3
-        )
-    
-    def load_peer_public_key(self, peer_public_key_bytes: bytes) -> object:
-        """Load a peer's public key from bytes."""
-        return serialization.load_pem_public_key(peer_public_key_bytes)
-    
-    def generate_shared_key(self, peer_username: str, peer_public_key_bytes: bytes) -> bytes:
+        logging.debug(f"Public key serialized, length: {len(key_bytes)} bytes")
+        return key_bytes
+        
+    def has_shared_key(self, peer_username):
         """
-        Generate a shared key with a peer using their public key.
-        
-        Args:
-            peer_username: Username of the peer for key storage
-            peer_public_key_bytes: The peer's public key in bytes
-            
-        Returns:
-            bytes: The derived shared key
+        Check if we have a shared key with a specific peer
         """
-        if not self.private_key:
-            self.generate_dh_parameters()
-            
-        peer_public_key = self.load_peer_public_key(peer_public_key_bytes)
-        
-        shared_key = self.private_key.exchange(peer_public_key)
-        
-        derived_key = HKDF(
-            algorithm=hashes.SHA256(),
-            length=32,  # 256 bits for AES-256
-            salt=None,
-            info=b'ciphershare-encryption'
-        ).derive(shared_key)
-        
-        self.shared_keys[peer_username] = derived_key
-        logging.info(f"Generated shared key with peer: {peer_username}")
-        
-        return derived_key
+        has_key = peer_username in self.shared_keys
+        logging.debug(f"Shared key check for peer {peer_username}: {'Found' if has_key else 'Not found'}")
+        return has_key
     
-    def get_shared_key(self, peer_username: str) -> bytes:
-        """Get the shared key for a specific peer."""
-        if peer_username not in self.shared_keys:
-            raise KeyError(f"No shared key found for peer: {peer_username}")
-        return self.shared_keys[peer_username]
-    
-    def has_shared_key(self, peer_username: str) -> bool:
-        """Check if we have a shared key with a specific peer."""
-        return peer_username in self.shared_keys
-    
-    def remove_shared_key(self, peer_username: str) -> bool:
-        """Remove a shared key for a specific peer."""
+    def remove_shared_key(self, peer_username):
+        """
+        Remove a shared key for a peer
+        """
         if peer_username in self.shared_keys:
             del self.shared_keys[peer_username]
             logging.info(f"Removed shared key for peer: {peer_username}")
             return True
+        logging.warning(f"Attempted to remove nonexistent shared key for peer: {peer_username}")
         return False
-    
-    def encrypt_file(self, peer_username: str, file_path: str, output_path: str) -> str:
+        
+    def generate_shared_key(self, peer_username, peer_public_key_bytes):
         """
-        Encrypt a file using AES with the shared key of a peer.
+        Generate a shared key with a peer using their public key
         
         Args:
-            peer_username: Username of the peer whose shared key to use
-            file_path: Path to the file to encrypt
-            output_path: Path to save the encrypted file
+            peer_username: The username of the peer
+            peer_public_key_bytes: The serialized public key of the peer
             
         Returns:
-            str: The SHA-256 hash of the original file for integrity verification
+            bool: True if key generation succeeded, False otherwise
         """
-        key = self.get_shared_key(peer_username)
-        
-        # Generate a random IV
-        iv = os.urandom(16)
-        
-        file_hash = self._calculate_file_hash(file_path)
-        
-        encryptor = Cipher(
-            algorithms.AES(key),
-            modes.CBC(iv)
-        ).encryptor()
-        
-        padder = PKCS7(algorithms.AES.block_size).padder()
-        
-        with open(file_path, 'rb') as f_in, open(output_path, 'wb') as f_out:
-            # Write the IV at the beginning of the file
-            f_out.write(iv)
+        try:
+            logging.info(f"Generating shared key with peer: {peer_username}")
+            # Load peer's public key
+            logging.debug(f"Loading peer public key, size: {len(peer_public_key_bytes)} bytes")
+            peer_public_key = serialization.load_pem_public_key(
+                peer_public_key_bytes,
+                backend=default_backend()
+            )
+            logging.debug("Successfully loaded peer's public key")
             
-            # Encrypt and write the file content
-            while True:
-                chunk = f_in.read(8192)  # Read 8KB chunks
-                if not chunk:
-                    break
-                    
-                # Pad the last chunk if needed
-                if len(chunk) % 16 != 0:
-                    chunk = padder.update(chunk)
-                    if not chunk:
-                        chunk = padder.finalize()
-                        
-                encrypted_chunk = encryptor.update(chunk)
-                f_out.write(encrypted_chunk)
+            # Check if the peer's public key is compatible with our parameters
+            if not isinstance(peer_public_key, dh.DHPublicKey):
+                logging.error(f"Incompatible key type from peer {peer_username}")
+                return False
+                
+            # Generate shared key
+            logging.debug("Performing key exchange with peer's public key")
+            shared_key = self.private_key.exchange(peer_public_key)
+            logging.debug(f"Raw shared secret generated, length: {len(shared_key)} bytes")
             
-            # Finalize the encryption
-            if hasattr(padder, '_buffer') and padder._buffer:
-                chunk = padder.finalize()
-                encrypted_chunk = encryptor.update(chunk)
-                f_out.write(encrypted_chunk)
-                
-            final_block = encryptor.finalize()
-            if final_block:
-                f_out.write(final_block)
-                
-        logging.info(f"Encrypted file {file_path} for peer {peer_username}")
-        return file_hash
-    
-    def decrypt_file(self, peer_username: str, encrypted_file_path: str, output_path: str, original_hash: str) -> bool:
+            # Derive a cryptographic key from the shared secret
+            logging.debug("Deriving cryptographic key using HKDF")
+            derived_key = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,  # 256 bits for AES-256
+                salt=None,
+                info=b'handshake data',
+                backend=default_backend()
+            ).derive(shared_key)
+            
+            # Store the derived key for this peer
+            self.shared_keys[peer_username] = derived_key
+            logging.info(f"Successfully generated and stored shared key for peer {peer_username}")
+            return True
+            
+        except ValueError as e:
+            logging.error(f"Error generating shared key with {peer_username}: {str(e)}")
+            logging.error("This error typically occurs when peers use different DH parameters.")
+            logging.error("Make sure all peers are using the same standardized parameters.")
+            return False
+            
+        except Exception as e:
+            logging.error(f"Error generating shared key with {peer_username}: {e}", exc_info=True)
+            return False
+            
+    def encrypt_file(self, peer_username, input_file_path, output_file_path):
         """
-        Decrypt a file using AES with the shared key of a peer and verify its integrity.
+        Encrypt a file for a specific peer
         
         Args:
-            peer_username: Username of the peer whose shared key to use
-            encrypted_file_path: Path to the encrypted file
-            output_path: Path to save the decrypted file
-            original_hash: The SHA-256 hash of the original file for verification
+            peer_username: The username of the peer
+            input_file_path: Path to the input file
+            output_file_path: Path where the encrypted file will be saved
             
         Returns:
-            bool: True if the file was successfully decrypted and integrity verified
+            str: The file integrity hash
         """
-        key = self.get_shared_key(peer_username)
-        
-        with open(encrypted_file_path, 'rb') as f_in, open(output_path, 'wb') as f_out:
-            # Read the IV from the beginning of the file
-            iv = f_in.read(16)
+        if peer_username not in self.shared_keys:
+            logging.error(f"Cannot encrypt file: No shared key found for peer {peer_username}")
+            raise ValueError(f"No shared key found for peer {peer_username}")
             
+        try:
+            logging.info(f"Encrypting file {input_file_path} for peer {peer_username}")
+            # Read the input file
+            with open(input_file_path, 'rb') as f:
+                plaintext = f.read()
+            logging.debug(f"Read file for encryption, size: {len(plaintext)} bytes")
+                
+            # Generate a random initialization vector (IV)
+            iv = os.urandom(16)  # 16 bytes for AES
+            logging.debug(f"Generated random IV for encryption: {iv.hex()[:10]}...")
+            
+            # Create an encryptor
+            logging.debug("Creating AES-CFB encryptor")
+            encryptor = Cipher(
+                algorithms.AES(self.shared_keys[peer_username]),
+                modes.CFB(iv),
+                backend=default_backend()
+            ).encryptor()
+            
+            # Encrypt the plaintext
+            logging.debug("Encrypting file content")
+            ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+            logging.debug(f"File encrypted, ciphertext size: {len(ciphertext)} bytes")
+            
+            # Calculate integrity hash
+            integrity_hash = hashlib.sha256(ciphertext).hexdigest()
+            logging.debug(f"Generated integrity hash for encrypted data: {integrity_hash[:10]}...")
+            
+            # Write the IV and ciphertext to the output file
+            with open(output_file_path, 'wb') as f:
+                f.write(iv + ciphertext)
+            logging.info(f"Encrypted file written to {output_file_path}, size: {len(iv) + len(ciphertext)} bytes")
+                
+            return integrity_hash
+            
+        except Exception as e:
+            logging.error(f"Error encrypting file for {peer_username}: {e}", exc_info=True)
+            raise
+            
+    def decrypt_file(self, peer_username, input_file_path, output_file_path, integrity_hash):
+        """
+        Decrypt a file from a specific peer
+        
+        Args:
+            peer_username: The username of the peer
+            input_file_path: Path to the encrypted file
+            output_file_path: Path where the decrypted file will be saved
+            integrity_hash: The expected hash of the ciphertext for integrity check
+            
+        Returns:
+            bool: True if decryption succeeded and integrity check passed, False otherwise
+        """
+        if peer_username not in self.shared_keys:
+            logging.error(f"Cannot decrypt file: No shared key found for peer {peer_username}")
+            return False
+            
+        try:
+            logging.info(f"Decrypting file from peer {peer_username}: {input_file_path}")
+            # Read the encrypted file
+            with open(input_file_path, 'rb') as f:
+                data = f.read()
+            logging.debug(f"Read encrypted file, size: {len(data)} bytes")
+                
+            # First 16 bytes are the IV
+            iv = data[:16]
+            ciphertext = data[16:]
+            logging.debug(f"Extracted IV: {iv.hex()[:10]}... and ciphertext (size: {len(ciphertext)} bytes)")
+            
+            # Verify integrity
+            calculated_hash = hashlib.sha256(ciphertext).hexdigest()
+            logging.debug(f"Calculated hash: {calculated_hash[:10]}..., expected hash: {integrity_hash[:10]}...")
+            
+            if calculated_hash != integrity_hash:
+                logging.error(f"File integrity check failed. Hash mismatch: {calculated_hash[:10]}... vs {integrity_hash[:10]}...")
+                return False
+            
+            logging.debug("File integrity check passed")
+                
+            # Create a decryptor
+            logging.debug("Creating AES-CFB decryptor")
             decryptor = Cipher(
-                algorithms.AES(key),
-                modes.CBC(iv)
+                algorithms.AES(self.shared_keys[peer_username]),
+                modes.CFB(iv),
+                backend=default_backend()
             ).decryptor()
             
-            unpadder = PKCS7(algorithms.AES.block_size).unpadder()
+            # Decrypt the ciphertext
+            logging.debug("Decrypting file content")
+            plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+            logging.debug(f"File decrypted, plaintext size: {len(plaintext)} bytes")
             
-            while True:
-                chunk = f_in.read(8192)  # Read 8KB chunks
-                if not chunk:
-                    break
-                    
-                decrypted_chunk = decryptor.update(chunk)
+            # Write the plaintext to the output file
+            with open(output_file_path, 'wb') as f:
+                f.write(plaintext)
+            logging.info(f"Decrypted file written to {output_file_path}")
                 
-                # Only unpad the last chunk
-                if len(chunk) < 8192:
-                    try:
-                        decrypted_chunk = unpadder.update(decrypted_chunk) + unpadder.finalize()
-                    except ValueError:
-                        # If unpadding fails, it might not be the last block
-                        pass
-                        
-                f_out.write(decrypted_chunk)
+            return True
             
-            final_block = decryptor.finalize()
-            if final_block:
-                f_out.write(final_block)
+        except Exception as e:
+            logging.error(f"Error decrypting file from {peer_username}: {e}", exc_info=True)
+            return False
+
+    def get_file_hash(self, file_path: str) -> str:
+        """Calculate and return the SHA-256 hash of a file."""
+        logging.debug(f"Calculating hash for file: {file_path}")
+        hash_value = self._calculate_file_hash(file_path)
+        logging.debug(f"File hash calculated: {hash_value[:10]}...")
+        return hash_value
         
-        decrypted_file_hash = self._calculate_file_hash(output_path)
-        is_valid = decrypted_file_hash == original_hash
-        
-        if is_valid:
-            logging.info(f"Successfully decrypted file {encrypted_file_path} from peer {peer_username}")
-        else:
-            logging.error(f"Integrity check failed for file {encrypted_file_path} from peer {peer_username}")
-            
-        return is_valid
-    
+    def verify_file_integrity(self, file_path: str, expected_hash: str) -> bool:
+        """Verify the integrity of a file using its SHA-256 hash."""
+        logging.debug(f"Verifying integrity of file: {file_path}")
+        actual_hash = self._calculate_file_hash(file_path)
+        result = actual_hash == expected_hash
+        logging.debug(f"Integrity check result: {'Passed' if result else 'Failed'}")
+        return result
+
     def _calculate_file_hash(self, file_path: str) -> str:
         """Calculate SHA-256 hash of a file."""
         sha256 = hashlib.sha256()
         
         with open(file_path, 'rb') as f:
+            bytes_read = 0
             while True:
                 data = f.read(65536)  # Read 64KB chunks
                 if not data:
                     break
                 sha256.update(data)
+                bytes_read += len(data)
                 
-        return sha256.hexdigest()
-
-    def get_file_hash(self, file_path: str) -> str:
-        """Calculate and return the SHA-256 hash of a file."""
-        return self._calculate_file_hash(file_path)
-        
-    def verify_file_integrity(self, file_path: str, expected_hash: str) -> bool:
-        """Verify the integrity of a file using its SHA-256 hash."""
-        actual_hash = self._calculate_file_hash(file_path)
-        return actual_hash == expected_hash
+        hash_value = sha256.hexdigest()
+        logging.debug(f"Calculated hash for {bytes_read} bytes: {hash_value[:10]}...")
+        return hash_value
