@@ -48,3 +48,7 @@ class UDPServer(threading.Thread):
         self.timer.start()
         self.cache.refresh(self.sessionKey)
         print(f"New {PEER_TIMEOUT}-second timer started for {self.username}")
+
+    def stop(self):
+        self.timer.cancel()
+        print(f"UDP Server stopped for {self.username}")

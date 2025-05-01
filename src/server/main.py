@@ -11,18 +11,13 @@ sys.path.insert(0, project_root)
 from src.config.config import TCP_PORT, UDP_PORT
 from threading import Lock
 from in_memory_storage import Cache
+from src.utils import get_local_ip_address
 
 
 def main():
     print("\033[31mRegistry started...\033[0m")
 
-    # Get host IP address
-    hostname = socket.gethostname()
-    try:
-        HOST = socket.gethostbyname(hostname)
-    except socket.gaierror:
-        import netifaces as ni
-        HOST = ni.ifaddresses('en0')[ni.AF_INET][0]['addr']
+    HOST =  get_local_ip_address()
 
     print(f"\033[96mRegistry IP address:\033[0m {HOST}")
     print(f"\033[96mRegistry port number:\033[0m {TCP_PORT}")
