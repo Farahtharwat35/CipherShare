@@ -1,6 +1,7 @@
 import os , sys
 import hashlib
 import logging
+import secrets
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
@@ -10,6 +11,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
 from src.config.config import P , G
 
+CREDENTIALS_DIR = '.cipher_credentials'
 
 class CryptoUtils:
     """Utility class for cryptographic operations in CipherShare."""
@@ -342,3 +344,72 @@ class CryptoUtils:
             backend=default_backend()
         )
         self.public_key = self.private_key.public_key()
+
+    @staticmethod
+    def ensure_credentials_dir():
+        if not os.path.exists(CREDENTIALS_DIR):
+            os.makedirs(CREDENTIALS_DIR)
+    
+    @staticmethod
+    def get_credential_file(username: str) -> str:
+        return os.path.join(CREDENTIALS_DIR, f"{username}.enc")
+
+    @staticmethod
+    def list_saved_credentials():
+        CryptoUtils.ensure_credentials_dir()
+        files = [f for f in os.listdir(CREDENTIALS_DIR) if f.endswith('.enc')]
+        usernames = [f.replace('.enc', '') for f in files]
+        return usernames
+
+    @staticmethod
+    def derive_key(passphrase: str, salt: bytes) -> bytes:
+        """Derive AES key from a passphrase and salt using PBKDF2."""
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100_000,
+            backend=default_backend()
+        )
+        return kdf.derive(passphrase.encode())
+
+
+    @staticmethod
+    def save_encrypted_credentials(username: str, password: str, passphrase: str):
+        """Encrypt and save credentials for a specific username."""
+        CryptoUtils.ensure_credentials_dir()
+        salt = secrets.token_bytes(16)
+        key = CryptoUtils.derive_key(passphrase, salt)
+        iv = secrets.token_bytes(16)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+        plaintext = f"{username}:{password}".encode()
+        encrypted = encryptor.update(plaintext) + encryptor.finalize()
+        filepath = CryptoUtils.get_credential_file(username)
+        with open(filepath, 'wb') as f:
+            f.write(salt + iv + encrypted)
+        print(f"Credentials saved securely for user '{username}'.")
+
+    @staticmethod
+    def load_encrypted_credentials(username: str, passphrase: str):
+        """Load and decrypt credentials for a specific username."""
+        filepath = CryptoUtils.get_credential_file(username)
+        if not os.path.exists(filepath):
+            print(f"No saved credentials found for user '{username}'.")
+            return None, None
+        with open(filepath, 'rb') as f:
+            data = f.read()
+        salt = data[:16]
+        iv = data[16:32]
+        encrypted = data[32:]
+        key = CryptoUtils.derive_key(passphrase, salt)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        try:
+            decrypted = decryptor.update(encrypted) + decryptor.finalize()
+            username_dec, password = decrypted.decode().split(':', 1)
+            return username_dec, password
+        except Exception as e:
+            print(f"Failed to decrypt credentials: {e}")
+            return None, None
+

@@ -8,6 +8,7 @@ from src.utils import get_local_ip_address
 from peer import Peer
 from random import randint
 from src.config.config import SERVER_HOST, TCP_PORT
+from src.peer.crypto.crypto_utils import CryptoUtils
 
 def show_help():
     print("\nAvailable commands:")
@@ -29,8 +30,44 @@ def main():
     # Creating a Peer instance with temporary username
     p = Peer("", SERVER_HOST, TCP_PORT, self_tcp_port, self_udp_port)
     
+    saved_users = CryptoUtils.list_saved_credentials()
+    if saved_users:
+        print(f"Saved credentials found for users: {', '.join(saved_users)}")
+        use_autofill = input("Do you want to autofill from saved credentials? (y/n): ").strip().lower()
+        if use_autofill == 'y':
+            for idx, user in enumerate(saved_users):
+                print(f"[{idx+1}] {user}")
+            while True:
+                try:
+                    choice_idx = int(input(f"Select a user (1-{len(saved_users)}), or 0 to cancel: ").strip())
+                    if choice_idx == 0:
+                        print("Autofill cancelled, proceeding to manual login...")
+                        break
+                    if 1 <= choice_idx <= len(saved_users):
+                        selected_user = saved_users[choice_idx - 1]
+                        passphrase = getpass.getpass(f"Enter passphrase for '{selected_user}': ").strip()
+                        username, password = CryptoUtils.load_encrypted_credentials(selected_user, passphrase)
+                        if username and password:
+                            print(f"Attempting auto-login for {username}...")
+                            p = Peer("", SERVER_HOST, TCP_PORT, self_tcp_port, self_udp_port)
+                            login_success = p.login(username, password, is_register=False)
+                            if login_success:
+                                print("Auto-login successful.")
+                                p.start()
+                                return
+                            else:
+                                print("Auto-login failed. Proceeding to manual login.")
+                                break
+                        else:
+                            print("Failed to decrypt credentials or wrong passphrase.")
+                    else:
+                        print("Invalid selection.")
+                except ValueError:
+                    print("Invalid input.")
+
+
     # Looping until successful login or user cancellation
-    while True:
+    while True and not login_success:
         try:
             choice = input("Enter 0 to login or 1 to register: ").strip()
             if choice not in ["0", "1"]:
@@ -44,6 +81,10 @@ def main():
             login_success = p.login(username, password, is_register)
             
             if login_success:
+                save_choice = input("Do you want to save your credentials for future autofill? (y/n): ").strip().lower()
+                if save_choice == 'y':
+                    passphrase = getpass.getpass("Enter a passphrase to encrypt your credentials: ").strip()
+                    CryptoUtils.save_encrypted_credentials(username, password, passphrase)
                 break
         except Exception as e:
             print(f"Error: {e}")
