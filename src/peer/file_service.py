@@ -8,7 +8,7 @@ import mimetypes
 from typing import List, Optional
 import socket
 import tempfile
-from crypto.crypto_utils import CryptoUtils
+from .crypto.crypto_utils import CryptoUtils
 
 SHARED_DIR = "shared"
 RECEIVED_DIR = "received"
