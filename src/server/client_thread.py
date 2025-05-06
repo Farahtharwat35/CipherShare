@@ -10,7 +10,7 @@ from globals import tcp_connections, udp_connections
 import socket
 import uuid
 import base64
-from crypto_utils import hash_password
+from crypto_utils import hash_password, verify_password
 
 
 class ClientThread(threading.Thread):
@@ -143,9 +143,7 @@ class ClientThread(threading.Thread):
             print(f"User {message[1]} already exists")
         else:
             # Hash the password using Argon2
-            hashed_password, salt = hash_password(message[4])
-            hashed_password_b64 = base64.b64encode(hashed_password).decode('utf-8')
-            salt_b64 = base64.b64encode(salt).decode('utf-8')
+            hashed_password_b64, salt_b64 = hash_password(message[4])
             self.db.register(message[1], hashed_password_b64, salt_b64)
             self.db.save_online_peer(message[1], message[2], message[3])
             sessionKey = self._generateSessionKey(message[1])
@@ -173,9 +171,7 @@ class ClientThread(threading.Thread):
             # Hash the provided password and compare it with the stored hash and salt
             db_entry = self.db.get_password_and_salt(message[1])
             retrieved_hashed_pass_b64, salt_b64 = db_entry
-            retrieved_hashed_pass = base64.b64decode(retrieved_hashed_pass_b64)
-            salt = base64.b64decode(salt_b64)
-            if retrieved_hashed_pass and verify_password(message[4], retrieved_hashed_pass, salt):
+            if retrieved_hashed_pass_b64 and verify_password(message[4], retrieved_hashed_pass_b64, salt_b64):
                 self.username = message[1]
                 self.db.save_online_peer(message[1], message[2], message[3])
                 sessionKey = self._generateSessionKey(message[1])

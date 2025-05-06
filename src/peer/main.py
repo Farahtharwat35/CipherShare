@@ -30,6 +30,7 @@ def main():
     # Creating a Peer instance with temporary username
     p = Peer("", SERVER_HOST, TCP_PORT, self_tcp_port, self_udp_port)
     
+    login_success = None
     saved_users = CryptoUtils.list_saved_credentials()
     if saved_users:
         print(f"Saved credentials found for users: {', '.join(saved_users)}")

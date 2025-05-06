@@ -10,13 +10,13 @@ authors = [
 ]
 packages = [
     { include = "src", from = "./" },
-    { include = "peer" , from ="./src/peer" },
-    { include = "server" , from ="./src/server" },
+    { include = "peer",  from ="./src/peer" },
+    { include = "server",  from ="./src/server" },
 ]
 readme = ""
 requires-python = ">=3.10"
 dependencies = [
-    "cryptography (>=44.0.2,<45.0.0)",  # Cryptography library for secure encryption/decryption
+    "cryptography[argon2] (>=44.0.3,<45.0.0)",  # Cryptography library for secure encryption/decryption
     "pycryptodome>=3.10.1",  # Alternative cryptography library
     "argon2-cffi>=21.3.0",   # Password hashing using Argon2
     "py2p>=0.1.0",           # Peer-to-peer file sharing library (optional)

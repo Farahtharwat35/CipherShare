@@ -595,6 +595,8 @@ class Peer:
                 return True
             else:
                 error_message = "Registration failed." if is_register else "Wrong Username or Password"
+                if 'join-exist' in response:
+                    error_message = "User already exists."
                 print(error_message)
                 # Close the connection since login failed
                 if self.rendezvous_server_socket:

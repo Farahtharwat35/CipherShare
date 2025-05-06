@@ -1,55 +1,43 @@
-import secrets
+import os
+import base64
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
 
-def hash_password(password, salt=None):
+def hash_password(password):
     """
-    Hash the password using Argon2
-    
-    Args:
-        password (str): The password to hash
-        salt (bytes, optional): The salt to use for the hash. If None, a random salt will be generated.
-    
-    Returns:
-        tuple: A tuple containing the hashed password and the salt used for the hash
+    Hash the password using Argon2.
+    Returns (base64-hash, base64-salt)
     """
-    if salt is None:
-        salt = secrets.token_bytes(16)
+    salt = os.urandom(16)
     kdf = Argon2id(
         salt=salt,
-        time_cost=2,
-        memory_cost=102400,
-        parallelism=8,
         length=32,
-        backend=default_backend()
+        iterations=1,
+        lanes=4,
+        memory_cost=64 * 1024,
+        ad=None,
+        secret=None,
     )
-    hashed_password = kdf.derive(password.encode('utf-8'))
-    return hashed_password, salt
+    hashed_password = kdf.derive(password.encode())
 
-def verify_password(password, hashed_password, salt):
-    """
-    Verify the password using Argon2
-    
-    Args:
-        password (str): The password to verify
-        hashed_password (bytes): The hashed password to compare against
-        salt (bytes): The salt used for the hash
-    
-    Returns:
-        bool: True if the password matches the hash, False otherwise
-    """
+    hashed_b64 = base64.b64encode(hashed_password).decode('utf-8')
+    salt_b64 = base64.b64encode(salt).decode('utf-8')
+
+    return hashed_b64, salt_b64
+
+def verify_password(password, stored_hash_b64, salt_b64):
+    salt = base64.b64decode(salt_b64)
+    expected_hash = base64.b64decode(stored_hash_b64)
+
     kdf = Argon2id(
         salt=salt,
-        time_cost=2,
-        memory_cost=102400,
-        parallelism=8,
         length=32,
-        backend=default_backend()
+        iterations=1,
+        lanes=4,
+        memory_cost=64 * 1024,
+        ad=None,
+        secret=None,
     )
-    try:
-        kdf.verify(password.encode('utf-8'), hashed_password)
-        return True
-    except Exception:
-        return False
+
+    derived = kdf.derive(password.encode())
+
+    return derived == expected_hash
