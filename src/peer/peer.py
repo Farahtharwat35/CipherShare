@@ -383,13 +383,6 @@ class Peer:
                 
                 # Now proceeding with file download
                 self.file_service.download_file(file_id, socket)
-                
-                import os
-                file_path = os.path.join("received", file_id)
-                if os.path.exists(file_path):
-                    print(f"File {file_id} downloaded successfully from {username}")
-                else:
-                    print(f"Failed to download file {file_id} from {username}")
             else:
                 print(f"Unexpected response from peer: {response}")
                 self._close_connection(socket)
@@ -417,7 +410,8 @@ class Peer:
             self.rendezvous_server_socket.close()
         if self.peer_server_socket:
             self.peer_server_socket.close()
-        for conn in self.active_outgoing_connections.values():
+        connections = list(self.active_outgoing_connections.values())
+        for conn in connections:
             self._close_connection(conn)
         self.active_outgoing_connections.clear()
         self.active_incoming_connections.clear()

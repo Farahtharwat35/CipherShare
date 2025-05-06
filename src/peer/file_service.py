@@ -264,7 +264,10 @@ class FileService:
                 logging.info(f"File {file_id} downloaded and decrypted successfully")
                 self.received_files[file_id] = file_info
                 logging.debug(f"Added file info to received_files dictionary")
-                print(f"File {file_id} downloaded and decrypted successfully")
+                new_final_path = os.path.join(RECEIVED_DIR, file_info.name)
+                os.rename(final_path, new_final_path)
+                logging.debug(f"Renamed file from {final_path} to {new_final_path}")
+                print(f"File {file_id} downloaded and decrypted successfully to {new_final_path}")
             else:
                 logging.error("File integrity check failed. The file may have been tampered with.")
                 print("Error: File integrity check failed. The file may have been tampered with.")
