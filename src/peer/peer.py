@@ -580,6 +580,18 @@ class Peer:
                 self.sessionKey = response_parts[-1]
                 action_type = "Registered" if is_register else "Logged in"
                 print(f"{action_type} successfully as {username}.")
+                
+                key_file = f"{username}_dh_private_key.enc"
+                if os.path.exists(key_file):
+                    print("Loading encrypted private key...")
+                    self.file_service.crypto.load_private_key_encrypted(key_file, password)
+                else:
+                    print("No existing private key, generating new and saving...")
+                    self.file_service.crypto.save_private_key_encrypted(key_file, password)
+                    print(f"Private key saved encrypted to {key_file}.")
+                self.file_service.crypto.load_private_key_encrypted(key_file, password)
+                print("Private key loaded and decrypted.")
+                
                 return True
             else:
                 error_message = "Registration failed." if is_register else "Wrong Username or Password"

@@ -26,9 +26,9 @@ class CryptoUtils:
         self.parameters = dh_parameter_numbers.parameters(default_backend())
         
         # Generating our private key based on the standard parameters
-        self.private_key = self.parameters.generate_private_key()
+        self.private_key = None
         # Deriving our public key
-        self.public_key = self.private_key.public_key()
+        self.public_key = None
         
         # Storing shared keys for each peer
         self.shared_keys = {}
@@ -270,3 +270,75 @@ class CryptoUtils:
         hash_value = sha256.hexdigest()
         logging.debug(f"Calculated hash for {bytes_read} bytes: {hash_value[:10]}...")
         return hash_value
+
+    def derive_user_key(self, password: str, salt: bytes = None) -> bytes:
+        """
+        Derive a cryptographic key from a password using PBKDF2.
+
+        Args:
+            password: The user's password.
+            salt: A unique salt (must be securely stored alongside the encrypted data).
+
+        Returns:
+            A 32-byte key suitable for AES-256.
+        """
+        if salt is None:
+            import secrets
+            salt = secrets.token_bytes(16)
+
+        logging.info("Deriving encryption key from password using PBKDF2HMAC")
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100_000,
+            backend=default_backend()
+        )
+        key = kdf.derive(password.encode('utf-8'))
+        logging.info("User encryption key derived successfully")
+        return key
+
+    def save_private_key_encrypted(self, filepath: str, password: str):
+        if self.private_key is None:
+            logging.info("No existing private key found, generating new DH private key")
+            self.private_key = self.parameters.generate_private_key()
+            self.public_key = self.private_key.public_key()
+
+        # Derive a key from the password
+        salt = os.urandom(16)
+        key = self.derive_user_key(password, salt)
+
+        # Serialize the private key
+        private_bytes = self.private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        # Encrypt the private key using AES
+        iv = os.urandom(16)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+        encrypted_private = encryptor.update(private_bytes) + encryptor.finalize()
+
+        with open(filepath, 'wb') as f:
+            f.write(salt + iv + encrypted_private)
+
+    def load_private_key_encrypted(self, filepath: str, password: str):
+        with open(filepath, 'rb') as f:
+            data = f.read()
+        salt = data[:16]
+        iv = data[16:32]
+        encrypted_private = data[32:]
+        key = self.derive_user_key(password, salt)
+
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        private_bytes = decryptor.update(encrypted_private) + decryptor.finalize()
+
+        self.private_key = serialization.load_pem_private_key(
+            private_bytes,
+            password=None,
+            backend=default_backend()
+        )
+        self.public_key = self.private_key.public_key()
