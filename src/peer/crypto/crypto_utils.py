@@ -1,6 +1,8 @@
 import os , sys
 import hashlib
 import logging
+import secrets
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
@@ -10,6 +12,8 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
 from src.config.config import P , G
 
+CREDENTIALS_DIR = '.cipher_credentials'
+DH_PRIVATE_KEY_DIR = '.dh_private_keys'
 
 class CryptoUtils:
     """Utility class for cryptographic operations in CipherShare."""
@@ -26,9 +30,9 @@ class CryptoUtils:
         self.parameters = dh_parameter_numbers.parameters(default_backend())
         
         # Generating our private key based on the standard parameters
-        self.private_key = self.parameters.generate_private_key()
+        self.private_key = None
         # Deriving our public key
-        self.public_key = self.private_key.public_key()
+        self.public_key = None
         
         # Storing shared keys for each peer
         self.shared_keys = {}
@@ -270,3 +274,155 @@ class CryptoUtils:
         hash_value = sha256.hexdigest()
         logging.debug(f"Calculated hash for {bytes_read} bytes: {hash_value[:10]}...")
         return hash_value
+
+    def derive_user_key(self, password: str, salt: bytes = None) -> bytes:
+        """
+        Derive a cryptographic key from a password using PBKDF2.
+
+        Args:
+            password: The user's password.
+            salt: A unique salt (must be securely stored alongside the encrypted data).
+
+        Returns:
+            A 32-byte key suitable for AES-256.
+        """
+        if salt is None:
+            import secrets
+            salt = secrets.token_bytes(16)
+
+        logging.info("Deriving encryption key from password using PBKDF2HMAC")
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100_000,
+            backend=default_backend()
+        )
+        key = kdf.derive(password.encode('utf-8'))
+        logging.info("User encryption key derived successfully")
+        return key
+
+    def save_private_key_encrypted(self, filepath: str, password: str):
+        if self.private_key is None:
+            logging.info("No existing private key found, generating new DH private key")
+            self.private_key = self.parameters.generate_private_key()
+            self.public_key = self.private_key.public_key()
+
+        # Derive a key from the password
+        salt = os.urandom(16)
+        key = self.derive_user_key(password, salt)
+
+        # Serialize the private key
+        private_bytes = self.private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        # Encrypt the private key using AES
+        iv = os.urandom(16)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+        encrypted_private = encryptor.update(private_bytes) + encryptor.finalize()
+
+        with open(filepath, 'wb') as f:
+            f.write(salt + iv + encrypted_private)
+
+    def load_private_key_encrypted(self, filepath: str, password: str):
+        with open(filepath, 'rb') as f:
+            data = f.read()
+        salt = data[:16]
+        iv = data[16:32]
+        encrypted_private = data[32:]
+        key = self.derive_user_key(password, salt)
+
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        private_bytes = decryptor.update(encrypted_private) + decryptor.finalize()
+
+        self.private_key = serialization.load_pem_private_key(
+            private_bytes,
+            password=None,
+            backend=default_backend()
+        )
+        self.public_key = self.private_key.public_key()
+
+    @staticmethod
+    def ensure_credentials_dir():
+        if not os.path.exists(CREDENTIALS_DIR):
+            os.makedirs(CREDENTIALS_DIR)
+            
+    @staticmethod
+    def ensure_dh_private_key_dir():
+        if not os.path.exists(DH_PRIVATE_KEY_DIR):
+            os.makedirs(DH_PRIVATE_KEY_DIR)
+    
+    @staticmethod
+    def get_dh_private_key_file(username: str) -> str:
+        CryptoUtils.ensure_dh_private_key_dir()
+        return os.path.join(DH_PRIVATE_KEY_DIR, f"{username}_dh_private_key.enc")
+    
+    @staticmethod
+    def get_credential_file(username: str) -> str:
+        CryptoUtils.ensure_credentials_dir()
+        return os.path.join(CREDENTIALS_DIR, f"{username}.enc")
+
+    @staticmethod
+    def list_saved_credentials():
+        CryptoUtils.ensure_credentials_dir()
+        files = [f for f in os.listdir(CREDENTIALS_DIR) if f.endswith('.enc')]
+        usernames = [f.replace('.enc', '') for f in files]
+        return usernames
+
+    @staticmethod
+    def derive_key(passphrase: str, salt: bytes) -> bytes:
+        """Derive AES key from a passphrase and salt using PBKDF2."""
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100_000,
+            backend=default_backend()
+        )
+        return kdf.derive(passphrase.encode())
+
+
+    @staticmethod
+    def save_encrypted_credentials(username: str, password: str, passphrase: str):
+        """Encrypt and save credentials for a specific username."""
+        CryptoUtils.ensure_credentials_dir()
+        salt = secrets.token_bytes(16)
+        key = CryptoUtils.derive_key(passphrase, salt)
+        iv = secrets.token_bytes(16)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+        plaintext = f"{username}:{password}".encode()
+        encrypted = encryptor.update(plaintext) + encryptor.finalize()
+        filepath = CryptoUtils.get_credential_file(username)
+        with open(filepath, 'wb') as f:
+            f.write(salt + iv + encrypted)
+        print(f"Credentials saved securely for user '{username}'.")
+
+    @staticmethod
+    def load_encrypted_credentials(username: str, passphrase: str):
+        """Load and decrypt credentials for a specific username."""
+        filepath = CryptoUtils.get_credential_file(username)
+        if not os.path.exists(filepath):
+            print(f"No saved credentials found for user '{username}'.")
+            return None, None
+        with open(filepath, 'rb') as f:
+            data = f.read()
+        salt = data[:16]
+        iv = data[16:32]
+        encrypted = data[32:]
+        key = CryptoUtils.derive_key(passphrase, salt)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        try:
+            decrypted = decryptor.update(encrypted) + decryptor.finalize()
+            username_dec, password = decrypted.decode().split(':', 1)
+            return username_dec, password
+        except Exception as e:
+            print(f"Failed to decrypt credentials: {e}")
+            return None, None
+

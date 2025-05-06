@@ -8,3 +8,4 @@ __pycache__/
 received/*
 shared/*
 *.txt
+**/*.enc

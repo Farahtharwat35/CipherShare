@@ -11,6 +11,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
 from src.utils import get_local_ip_address
 from src.config.config import TCP_PORT, UDP_PORT , HEARTBEAT_INTERVAL , LOGGING_LEVEL
+from crypto.crypto_utils import CryptoUtils
 
 class Peer:
     def __init__(self, username, server_ip, server_port, self_tcp_port = TCP_PORT, self_udp_port = UDP_PORT):
@@ -382,13 +383,6 @@ class Peer:
                 
                 # Now proceeding with file download
                 self.file_service.download_file(file_id, socket)
-                
-                import os
-                file_path = os.path.join("received", file_id)
-                if os.path.exists(file_path):
-                    print(f"File {file_id} downloaded successfully from {username}")
-                else:
-                    print(f"Failed to download file {file_id} from {username}")
             else:
                 print(f"Unexpected response from peer: {response}")
                 self._close_connection(socket)
@@ -416,7 +410,8 @@ class Peer:
             self.rendezvous_server_socket.close()
         if self.peer_server_socket:
             self.peer_server_socket.close()
-        for conn in self.active_outgoing_connections.values():
+        connections = list(self.active_outgoing_connections.values())
+        for conn in connections:
             self._close_connection(conn)
         self.active_outgoing_connections.clear()
         self.active_incoming_connections.clear()
@@ -580,9 +575,23 @@ class Peer:
                 self.sessionKey = response_parts[-1]
                 action_type = "Registered" if is_register else "Logged in"
                 print(f"{action_type} successfully as {username}.")
+                
+                key_file = CryptoUtils.get_dh_private_key_file(username)
+                if os.path.exists(key_file):
+                    print("Loading encrypted private key...")
+                    self.file_service.crypto.load_private_key_encrypted(key_file, password)
+                else:
+                    print("No existing private key, generating new and saving...")
+                    self.file_service.crypto.save_private_key_encrypted(key_file, password)
+                    print(f"Private key saved encrypted to {key_file}.")
+                self.file_service.crypto.load_private_key_encrypted(key_file, password)
+                print("Private key loaded and decrypted.")
+                
                 return True
             else:
                 error_message = "Registration failed." if is_register else "Wrong Username or Password"
+                if 'join-exist' in response:
+                    error_message = "User already exists."
                 print(error_message)
                 # Close the connection since login failed
                 if self.rendezvous_server_socket:

@@ -13,17 +13,18 @@ class DB:
     def is_account_exist(self, username):
         return self.db.accounts.count_documents({'username': username}) > 0
 
-    def register(self, username, hashed_password):
+    def register(self, username, hashed_password, salt):
         """Register a new user with a hashed password."""
         account = {
             "username": username,
-            "password": hashed_password  # Store the hashed password
+            "password": hashed_password,
+            "salt": salt    
         }
         self.db.accounts.insert_one(account)
 
-    def get_password(self, username):
+    def get_password_and_salt(self, username):
         user = self.db.accounts.find_one({"username": username})
-        return user["password"] if user else None
+        return (user["password"], user["salt"]) if user else (None, None)
 
     def is_account_online(self, username):
         return self.db.online_peers.count_documents({"username": username}) > 0
