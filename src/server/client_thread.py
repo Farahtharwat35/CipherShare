@@ -84,8 +84,8 @@ class ClientThread(threading.Thread):
         print(f"Cleaning up resources for {self.ip}:{self.port}")
         try:
             # Cancel any timers
-            if hasattr(self, 'udpServer') and self.udpServer:
-                self.udpServer.stop()
+            # if hasattr(self, 'udpServer') and self.udpServer:
+            #     self.udpServer.stop()
                 
             # Close socket safely if still open
             if hasattr(self, 'tcpClientSocket') and self.tcpClientSocket:
@@ -171,6 +171,7 @@ class ClientThread(threading.Thread):
             # Hash the provided password and compare it with the stored hash and salt
             db_entry = self.db.get_password_and_salt(message[1])
             retrieved_hashed_pass_b64, salt_b64 = db_entry
+            print(f"Retrieved hashed pass: {retrieved_hashed_pass_b64}")
             if retrieved_hashed_pass_b64 and verify_password(message[4], retrieved_hashed_pass_b64, salt_b64):
                 self.username = message[1]
                 self.db.save_online_peer(message[1], message[2], message[3])
@@ -208,12 +209,8 @@ class ClientThread(threading.Thread):
         if len(message) > 1 and message[1] is not None and self.db.is_account_online(message[1]):
             print(f"User {message[1]} is logging out")
             self.db.user_logout(message[1])
-            
-            # we cancel UDP timer first
-            if self.udpServer:
-                self.udpServer.stop()
-                
-            # Then we invalidate session key
+
+            # We invalidate session key
             sessionKey = message[2]
             self.cache.delete(sessionKey)
                 

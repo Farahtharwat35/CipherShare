@@ -24,14 +24,15 @@ class UDPServer(threading.Thread):
         print(f"Timer expired for {self.username} - checking if peer should be removed")
         if self.port_number is not None:
             print(f"Removing inactive peer: {self.username}")
-            self.db.user_logout(self.username)
             with self.lock:
-                if self.port_number in udp_connections:
+                print(udp_connections)
+                print(self.port_number)
+                if self.username in udp_connections:
                     print(f"Cleaning up resources for {self.username}")
-                    del udp_connections[self.port_number]
+                    del udp_connections[self.username]
                     self.db.user_logout(self.username)
                     self.cache.delete(self.sessionKey)
-                    print(f"DB: {self.db}")
+                    print(f"Cache deleted for {self.username}")
                     print(f"Resources for {self.username} removed from memory")
         else:
             print("Error: username or udpServer is not properly initialized.")
@@ -48,7 +49,3 @@ class UDPServer(threading.Thread):
         self.timer.start()
         self.cache.refresh(self.sessionKey)
         print(f"New {PEER_TIMEOUT}-second timer started for {self.username}")
-
-    def stop(self):
-        self.timer.cancel()
-        print(f"UDP Server stopped for {self.username}")

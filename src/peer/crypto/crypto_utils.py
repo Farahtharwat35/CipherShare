@@ -13,6 +13,7 @@ sys.path.insert(0, project_root)
 from src.config.config import P , G
 
 CREDENTIALS_DIR = '.cipher_credentials'
+DH_PRIVATE_KEY_DIR = '.dh_private_keys'
 
 class CryptoUtils:
     """Utility class for cryptographic operations in CipherShare."""
@@ -350,9 +351,20 @@ class CryptoUtils:
     def ensure_credentials_dir():
         if not os.path.exists(CREDENTIALS_DIR):
             os.makedirs(CREDENTIALS_DIR)
+            
+    @staticmethod
+    def ensure_dh_private_key_dir():
+        if not os.path.exists(DH_PRIVATE_KEY_DIR):
+            os.makedirs(DH_PRIVATE_KEY_DIR)
+    
+    @staticmethod
+    def get_dh_private_key_file(username: str) -> str:
+        CryptoUtils.ensure_dh_private_key_dir()
+        return os.path.join(DH_PRIVATE_KEY_DIR, f"{username}_dh_private_key.enc")
     
     @staticmethod
     def get_credential_file(username: str) -> str:
+        CryptoUtils.ensure_credentials_dir()
         return os.path.join(CREDENTIALS_DIR, f"{username}.enc")
 
     @staticmethod

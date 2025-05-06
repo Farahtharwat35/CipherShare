@@ -54,8 +54,7 @@ def main():
                             login_success = p.login(username, password, is_register=False)
                             if login_success:
                                 print("Auto-login successful.")
-                                p.start()
-                                return
+                                break
                             else:
                                 print("Auto-login failed. Proceeding to manual login.")
                                 break
