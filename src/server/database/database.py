@@ -24,7 +24,7 @@ class DB:
 
     def get_password_and_salt(self, username):
         user = self.db.accounts.find_one({"username": username})
-        return user["password"], user["salt"] if user else None
+        return (user["password"], user["salt"]) if user else (None, None)
 
     def is_account_online(self, username):
         return self.db.online_peers.count_documents({"username": username}) > 0
