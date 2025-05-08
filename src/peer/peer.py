@@ -182,7 +182,7 @@ class Peer:
         self.peer_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.peer_server_socket.bind(('', self.tcp_port))
         self.peer_server_socket.listen(5)
-        print(f"Listening for other peers on port {self.tcp_port}")
+        # print(f"Listening for other peers on port {self.tcp_port}")
         self.peer_server_socket.settimeout(4)
 
     def _connect_to_peer(self, username, peer_ip, peer_port):
@@ -578,20 +578,23 @@ class Peer:
                 
                 key_file = CryptoUtils.get_dh_private_key_file(username)
                 if os.path.exists(key_file):
-                    print("Loading encrypted private key...")
+                    # print("Loading encrypted private key...")
                     self.file_service.crypto.load_private_key_encrypted(key_file, password)
                 else:
                     print("No existing private key, generating new and saving...")
                     self.file_service.crypto.save_private_key_encrypted(key_file, password)
-                    print(f"Private key saved encrypted to {key_file}.")
+                    # print(f"Private key saved encrypted to {key_file}.")
                 self.file_service.crypto.load_private_key_encrypted(key_file, password)
-                print("Private key loaded and decrypted.")
+                # print("Private key loaded and decrypted.")
                 
                 return True
             else:
+                # print response
                 error_message = "Registration failed." if is_register else "Wrong Username or Password"
                 if 'join-exist' in response:
                     error_message = "User already exists."
+                elif 'login-online' in response:
+                    error_message = "User already logged in."
                 print(error_message)
                 # Close the connection since login failed
                 if self.rendezvous_server_socket:

@@ -24,6 +24,10 @@ def show_help():
     print(f"  {Fore.YELLOW}❓ help{Style.RESET_ALL} - Show this help message")
     print(f"  {Fore.YELLOW}🚪 exit{Style.RESET_ALL} - Quit the program")
 
+def is_valid_password(password):
+    """Check if the password is at least 6 characters long and contains at least one number."""
+    return len(password) >= 6 and any(char.isdigit() for char in password)
+
 def main():
     self_tcp_port = randint(15000, 16000)
     self_udp_port = randint(16000, 17000)
@@ -77,6 +81,10 @@ def main():
 
             username = input(f"{Fore.YELLOW}👤 Enter your username: ").strip()
             password = getpass.getpass(f"{Fore.YELLOW}🔑 Enter your password: ").strip()
+
+            if not is_valid_password(password):
+                print(f"{Fore.RED}❌ Password must be at least 6 characters long and contain at least one number.")
+                continue
 
             is_register = (choice == "1")
             login_success = p.login(username, password, is_register)
