@@ -4,14 +4,14 @@ import socket
 import threading
 import time
 from typing import Tuple
-from .file_service import FileInfo, FileService
+from file_service import FileInfo, FileService
 import logging
 import os , sys
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
 from src.utils import get_local_ip_address
 from src.config.config import TCP_PORT, UDP_PORT , HEARTBEAT_INTERVAL , LOGGING_LEVEL
-from .crypto.crypto_utils import CryptoUtils
+from crypto.crypto_utils import CryptoUtils
 
 class Peer:
     def __init__(self, username, server_ip, server_port, self_tcp_port = TCP_PORT, self_udp_port = UDP_PORT):
