@@ -196,7 +196,7 @@ class Peer:
                 peer_socket.close()
                 return None
             self.active_outgoing_connections[username] = peer_socket
-            print(f"Connected to peer {username} at {peer_ip}:{peer_port}")
+            # print(f"Connected to peer {username} at {peer_ip}:{peer_port}")
             return peer_socket
         except Exception as e:
             print(f"Error connecting to peer: {e}")
@@ -211,7 +211,7 @@ class Peer:
                     print(f"Failed to connect to peer {peer_username}")
                     continue
                 self.active_outgoing_connections[peer_username] = socket
-                print(f"Connected to peer {peer_username} at {peer_ip}:{peer_port}")
+                # print(f"Connected to peer {peer_username} at {peer_ip}:{peer_port}")
         except Exception as e:
             print(f"Error connecting to peer: {e}")
             return None
@@ -342,26 +342,22 @@ class Peer:
                 return
                 
             elif response == "key-exchange-required":
-                # Uploader wants to initiate key exchange
                 print(f"Establishing secure connection with {username}...")
                 
                 socket.sendall("ready-for-key-exchange\n".encode())
                 
-                # The uploader will send "key-exchange-request"
                 key_exchange_msg = socket.recv(1024).decode().strip()
                 if key_exchange_msg != "key-exchange-request":
                     print(f"Unexpected message during key exchange: {key_exchange_msg}")
                     self._close_connection(socket)
                     return
                 
-                # Handling the key exchange initiated by the uploader
                 success = self.handle_key_exchange_request(username, socket)
                 if not success:
                     print(f"Key exchange with {username} failed")
                     self._close_connection(socket)
                     return
                 
-                # Waiting for confirmation from the uploader
                 confirmation = socket.recv(1024).decode().strip()
                 if confirmation != "key-exchange-success":
                     print(f"Key exchange with {username} was not successful: {confirmation}")
@@ -371,17 +367,13 @@ class Peer:
                 print(f"Secure connection established with {username}")
                 print(f"Waiting for file transfer from {username}...")
                 
-                # The transfer will continue below with whatever signal is sent by the uploader
                 response = socket.recv(1024).decode().strip()
             
-            # Handling receiving upload signal
             if response == "upload" or response == "upload started":
                 print(f"Starting file download from {username}...")
                 
-                # Signal that I am ready to receive metadata
                 socket.sendall("ready_for_metadata\n".encode())
                 
-                # Now proceeding with file download
                 self.file_service.download_file(file_id, socket)
             else:
                 print(f"Unexpected response from peer: {response}")
@@ -425,17 +417,13 @@ class Peer:
         Initiate a Diffie-Hellman key exchange with a peer
         """
         try:
-            # Check if we already have a shared key with this peer
             if self.file_service.crypto.has_shared_key(peer_username):
                 logging.info(f"Already have a shared key with peer {peer_username}, skipping key exchange")
                 return True
                 
-            # Send key exchange request
             socket.sendall("key-exchange-request\n".encode())
             
-            # Send my DH public key - using a cleaner protocol
             public_key_bytes = self.file_service.crypto.get_public_key_bytes()
-            # Send the public key with a clear delimiter
             socket.sendall(b"BEGIN_PUBLIC_KEY\n")
             socket.sendall(public_key_bytes)
             socket.sendall(b"\nEND_PUBLIC_KEY\n")
@@ -451,7 +439,6 @@ class Peer:
             begin_marker_received = False
             buffer = b""
             
-            # Thia will read until we find END_PUBLIC_KEY marker
             while True:
                 chunk = socket.recv(4096)
                 if not chunk:
@@ -460,19 +447,15 @@ class Peer:
                     
                 buffer += chunk
                 
-                # Checking if we've received the begin marker
                 if not begin_marker_received:
                     if b"BEGIN_PUBLIC_KEY\n" in buffer:
                         begin_marker_received = True
-                        # Extract data after the begin marker
                         _, buffer = buffer.split(b"BEGIN_PUBLIC_KEY\n", 1)
                 
-                # After begin marker, check for end marker
                 if begin_marker_received and b"\nEND_PUBLIC_KEY\n" in buffer:
                     peer_public_key_bytes, remaining = buffer.split(b"\nEND_PUBLIC_KEY\n", 1)
                     break
             
-            # Generating the shared key
             success = self.file_service.crypto.generate_shared_key(peer_username, peer_public_key_bytes)
             
             if success:
@@ -491,12 +474,10 @@ class Peer:
         Handle a key exchange request from a peer
         """
         try:
-            # Reading peer's public key using delimiter-based protocol
             peer_public_key_bytes = b""
             begin_marker_received = False
             buffer = b""
             
-            # Reading until we find END_PUBLIC_KEY marker
             while True:
                 chunk = socket.recv(4096)
                 if not chunk:
@@ -505,27 +486,23 @@ class Peer:
                     
                 buffer += chunk
                 
-                # Check if we've received the begin marker
                 if not begin_marker_received:
                     if b"BEGIN_PUBLIC_KEY\n" in buffer:
                         begin_marker_received = True
                         # Extract data after the begin marker
                         _, buffer = buffer.split(b"BEGIN_PUBLIC_KEY\n", 1)
                 
-                # After begin marker, check for end marker
                 if begin_marker_received and b"\nEND_PUBLIC_KEY\n" in buffer:
                     peer_public_key_bytes, remaining = buffer.split(b"\nEND_PUBLIC_KEY\n", 1)
                     break
                     
             socket.sendall("key-exchange-accept\n".encode())
             
-            # Sending my public key with the same delimiter protocol
             public_key_bytes = self.file_service.crypto.get_public_key_bytes()
             socket.sendall(b"BEGIN_PUBLIC_KEY\n")
             socket.sendall(public_key_bytes)
             socket.sendall(b"\nEND_PUBLIC_KEY\n")
             
-            # Generating shared key
             success = self.file_service.crypto.generate_shared_key(peer_username, peer_public_key_bytes)
             
             if success:
@@ -589,7 +566,6 @@ class Peer:
                 
                 return True
             else:
-                # print response
                 error_message = "Registration failed." if is_register else "Wrong Username or Password"
                 if 'join-exist' in response:
                     error_message = "User already exists."

@@ -6,13 +6,11 @@ import threading
 import time
 from random import randint
 
-# Set the project root correctly from test folder
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-# Now import from src
 from src.utils import get_local_ip_address
-from src.peer.peer import Peer  # Fixed path
+from src.peer.peer import Peer
 from src.config.config import SERVER_HOST, TCP_PORT
 from src.peer.crypto.crypto_utils import CryptoUtils
 
